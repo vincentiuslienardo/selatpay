@@ -1,0 +1,17 @@
+bin/
+dist/
+coverage.out
+coverage.html
+*.test
+*.out
+
+.env
+.env.local
+.envrc
+
+.idea/
+.vscode/
+.DS_Store
+
+deploy/data/
+*.log
