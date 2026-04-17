@@ -1,0 +1,57 @@
+name: selatpay
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: selatpay
+      POSTGRES_PASSWORD: selatpay
+      POSTGRES_DB: selatpay
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U selatpay -d selatpay"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # UI
+      - "4317:4317"     # OTLP gRPC
+
+  solana-test-validator:
+    image: solanalabs/solana:v1.18.20
+    command: >
+      solana-test-validator
+        --rpc-port 8899
+        --bind-address 0.0.0.0
+        --reset
+        --quiet
+    ports:
+      - "8899:8899"   # JSON-RPC
+      - "8900:8900"   # WS
+
+  mock-bank:
+    build:
+      context: ../
+      dockerfile: deploy/mock-bank/Dockerfile
+    environment:
+      MOCK_BANK_ADDR: ":9100"
+    ports: ["9100:9100"]
+
+volumes:
+  pgdata:
