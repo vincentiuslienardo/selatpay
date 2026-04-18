@@ -1,0 +1,28 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "queries"
+    schema: "migrations"
+    strict_order_by: false
+    gen:
+      go:
+        package: "dbq"
+        out: "sqlc"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_prepared_queries: false
+        emit_exact_table_names: false
+        emit_empty_slices: true
+        emit_json_tags: false
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "pg_catalog.uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+          - db_type: "pg_catalog.uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
