@@ -52,7 +52,7 @@ migrate: ## apply DB migrations
 
 sqlc: ## regenerate sqlc bindings
 	@command -v sqlc >/dev/null || (echo "install: brew install sqlc"; exit 1)
-	sqlc generate -f internal/db/sqlc/sqlc.yaml
+	sqlc generate -f internal/db/sqlc.yaml
 
 oapi: ## regenerate OpenAPI server stubs
 	@command -v oapi-codegen >/dev/null || (echo "install: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest"; exit 1)
