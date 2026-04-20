@@ -56,6 +56,53 @@ func (ns NullAccountType) Value() (driver.Value, error) {
 	return string(ns.AccountType), nil
 }
 
+type PaymentIntentState string
+
+const (
+	PaymentIntentStatePending   PaymentIntentState = "pending"
+	PaymentIntentStateFunded    PaymentIntentState = "funded"
+	PaymentIntentStateSettling  PaymentIntentState = "settling"
+	PaymentIntentStatePaidOut   PaymentIntentState = "paid_out"
+	PaymentIntentStateCompleted PaymentIntentState = "completed"
+	PaymentIntentStateExpired   PaymentIntentState = "expired"
+	PaymentIntentStateFailed    PaymentIntentState = "failed"
+)
+
+func (e *PaymentIntentState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PaymentIntentState(s)
+	case string:
+		*e = PaymentIntentState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PaymentIntentState: %T", src)
+	}
+	return nil
+}
+
+type NullPaymentIntentState struct {
+	PaymentIntentState PaymentIntentState
+	Valid              bool // Valid is true if PaymentIntentState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPaymentIntentState) Scan(value interface{}) error {
+	if value == nil {
+		ns.PaymentIntentState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PaymentIntentState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPaymentIntentState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PaymentIntentState), nil
+}
+
 type PostingDirection string
 
 const (
@@ -106,6 +153,15 @@ type Account struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type ApiKey struct {
+	ID         pgtype.UUID
+	MerchantID pgtype.UUID
+	KeyID      string
+	SecretHash []byte
+	CreatedAt  pgtype.Timestamptz
+	RevokedAt  pgtype.Timestamptz
+}
+
 type IdempotencyKey struct {
 	MerchantID   pgtype.UUID
 	Key          string
@@ -124,6 +180,27 @@ type JournalEntry struct {
 	CreatedAt   pgtype.Timestamptz
 }
 
+type Merchant struct {
+	ID        pgtype.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+}
+
+type PaymentIntent struct {
+	ID                 pgtype.UUID
+	MerchantID         pgtype.UUID
+	ExternalRef        string
+	AmountIdr          int64
+	QuotedAmountUsdc   int64
+	QuoteID            pgtype.UUID
+	ReferencePubkey    *string
+	ReferenceSecretEnc []byte
+	RecipientAta       *string
+	State              PaymentIntentState
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
 type Posting struct {
 	ID             pgtype.UUID
 	JournalEntryID pgtype.UUID
@@ -132,4 +209,15 @@ type Posting struct {
 	Currency       string
 	Direction      PostingDirection
 	CreatedAt      pgtype.Timestamptz
+}
+
+type Quote struct {
+	ID        pgtype.UUID
+	Pair      string
+	RateNum   int64
+	RateScale int16
+	SpreadBps int32
+	ExpiresAt pgtype.Timestamptz
+	Signature []byte
+	CreatedAt pgtype.Timestamptz
 }
