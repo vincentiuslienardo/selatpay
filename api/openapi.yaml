@@ -1,0 +1,192 @@
+openapi: 3.1.0
+info:
+  title: Selatpay API
+  version: "0.1.0"
+  description: |
+    Cross-border stablecoin settlement API. All mutating endpoints require
+    HMAC-SHA256 request authentication; clients that want replay-safe retries
+    should set an `Idempotency-Key` header on POST.
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+
+security:
+  - HmacAuth: []
+
+paths:
+  /v1/payment_intents:
+    post:
+      operationId: createPaymentIntent
+      summary: Create a payment intent
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentIntentRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentIntent"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/payment_intents/{id}:
+    get:
+      operationId: getPaymentIntent
+      summary: Fetch a payment intent by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentIntent"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    HmacAuth:
+      type: apiKey
+      in: header
+      name: X-Selatpay-Signature
+      description: |
+        The caller sets three headers:
+          X-Selatpay-Key-Id    merchant-scoped key identifier
+          X-Selatpay-Timestamp RFC3339 or Unix seconds; must be within ±300s
+          X-Selatpay-Signature hex HMAC-SHA256 over
+                                 timestamp \n method \n path \n sha256(body)
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+
+  responses:
+    Error:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    CreatePaymentIntentRequest:
+      type: object
+      required: [external_ref, amount_idr]
+      properties:
+        external_ref:
+          type: string
+          description: Merchant-supplied deterministic id; unique per merchant.
+          minLength: 1
+          maxLength: 128
+        amount_idr:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Amount in IDR minor units (rupiah; IDR has no sub-unit).
+        description:
+          type: string
+          maxLength: 500
+
+    PaymentIntent:
+      type: object
+      required: [id, merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote, state, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        merchant_id:
+          type: string
+          format: uuid
+        external_ref:
+          type: string
+        amount_idr:
+          type: integer
+          format: int64
+        quoted_amount_usdc:
+          type: integer
+          format: int64
+          description: USDC amount in minor units (1e-6 USDC; SPL decimals=6).
+        quote:
+          $ref: "#/components/schemas/Quote"
+        state:
+          type: string
+          enum: [pending, funded, settling, paid_out, completed, expired, failed]
+        reference_pubkey:
+          type: string
+          nullable: true
+          description: Populated once Solana Pay allocation runs (phase 3+).
+        created_at:
+          type: string
+          format: date-time
+
+    Quote:
+      type: object
+      required: [id, pair, rate, spread_bps, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        pair:
+          type: string
+          example: IDR/USDC
+        rate:
+          type: string
+          description: Decimal string to avoid float round-trip (e.g. "0.0000617").
+        spread_bps:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 10000
+        expires_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: invalid_request
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
