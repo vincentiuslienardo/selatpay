@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -55,12 +56,11 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, cmd string, args []string, cfg config.Config, logger interface{ Info(string, ...any) }) error {
+func run(ctx context.Context, cmd string, args []string, cfg config.Config, logger *slog.Logger) error {
 	_ = args // reserved for per-subcommand flags in subsequent phases
-	_ = cfg  // wired in subsequent phases
 	switch cmd {
 	case "api":
-		return runStub(ctx, "api", logger)
+		return runAPI(ctx, cfg, logger)
 	case "watcher":
 		return runStub(ctx, "watcher", logger)
 	case "orchestrator":
@@ -79,7 +79,7 @@ func run(ctx context.Context, cmd string, args []string, cfg config.Config, logg
 }
 
 // runStub keeps the binary buildable while subcommands are implemented in later phases.
-func runStub(ctx context.Context, name string, logger interface{ Info(string, ...any) }) error {
+func runStub(ctx context.Context, name string, logger *slog.Logger) error {
 	logger.Info("subcommand stub running; awaiting implementation", "subcommand", name)
 	<-ctx.Done()
 	return ctx.Err()
