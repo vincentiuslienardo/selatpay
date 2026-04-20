@@ -28,6 +28,10 @@ type Config struct {
 	HotWalletSecretBase58 string
 	QuoteHMACSecret       []byte
 	WebhookHMACSecret     []byte
+	APIKeyPepper          []byte
+
+	QuoteTTL       time.Duration
+	QuoteSpreadBps int
 
 	MockBankURL string
 
@@ -52,6 +56,9 @@ func Load() (Config, error) {
 		HotWalletSecretBase58: os.Getenv("SELATPAY_HOT_WALLET_SECRET_BASE58"),
 		QuoteHMACSecret:       []byte(getEnv("SELATPAY_QUOTE_HMAC_SECRET", "")),
 		WebhookHMACSecret:     []byte(getEnv("SELATPAY_WEBHOOK_HMAC_SECRET", "")),
+		APIKeyPepper:          []byte(getEnv("SELATPAY_API_KEY_PEPPER", "")),
+		QuoteTTL:              getDuration("SELATPAY_QUOTE_TTL", 60*time.Second),
+		QuoteSpreadBps:        getInt("SELATPAY_QUOTE_SPREAD_BPS", 50),
 		MockBankURL:           getEnv("SELATPAY_MOCK_BANK_URL", "http://localhost:9100"),
 		HTTPReadTimeout:       getDuration("SELATPAY_HTTP_READ_TIMEOUT", 10*time.Second),
 		HTTPWriteTimeout:      getDuration("SELATPAY_HTTP_WRITE_TIMEOUT", 30*time.Second),
@@ -71,6 +78,9 @@ func (c Config) validate() error {
 	}
 	if len(c.WebhookHMACSecret) == 0 {
 		return fmt.Errorf("SELATPAY_WEBHOOK_HMAC_SECRET is required")
+	}
+	if len(c.APIKeyPepper) == 0 {
+		return fmt.Errorf("SELATPAY_API_KEY_PEPPER is required")
 	}
 	return nil
 }
@@ -94,7 +104,6 @@ func getDuration(k string, def time.Duration) time.Duration {
 	return d
 }
 
-//nolint:unused // reserved for future int env vars
 func getInt(k string, def int) int {
 	v, ok := os.LookupEnv(k)
 	if !ok {

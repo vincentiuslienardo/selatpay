@@ -9,6 +9,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("SELATPAY_DB_URL", "postgres://x@y/z")
 	t.Setenv("SELATPAY_QUOTE_HMAC_SECRET", "qsecret")
 	t.Setenv("SELATPAY_WEBHOOK_HMAC_SECRET", "wsecret")
+	t.Setenv("SELATPAY_API_KEY_PEPPER", "pepper")
 
 	c, err := Load()
 	if err != nil {
@@ -32,6 +33,7 @@ func TestLoadRequiresDB(t *testing.T) {
 	t.Setenv("SELATPAY_DB_URL", "")
 	t.Setenv("SELATPAY_QUOTE_HMAC_SECRET", "x")
 	t.Setenv("SELATPAY_WEBHOOK_HMAC_SECRET", "y")
+	t.Setenv("SELATPAY_API_KEY_PEPPER", "p")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when DB URL is empty")
@@ -42,8 +44,20 @@ func TestLoadRequiresHMACSecrets(t *testing.T) {
 	t.Setenv("SELATPAY_DB_URL", "postgres://x@y/z")
 	t.Setenv("SELATPAY_QUOTE_HMAC_SECRET", "")
 	t.Setenv("SELATPAY_WEBHOOK_HMAC_SECRET", "y")
+	t.Setenv("SELATPAY_API_KEY_PEPPER", "p")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error when quote HMAC secret is empty")
+	}
+}
+
+func TestLoadRequiresAPIKeyPepper(t *testing.T) {
+	t.Setenv("SELATPAY_DB_URL", "postgres://x@y/z")
+	t.Setenv("SELATPAY_QUOTE_HMAC_SECRET", "x")
+	t.Setenv("SELATPAY_WEBHOOK_HMAC_SECRET", "y")
+	t.Setenv("SELATPAY_API_KEY_PEPPER", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when API key pepper is empty")
 	}
 }
