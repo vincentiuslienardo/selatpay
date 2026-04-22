@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -25,10 +26,30 @@ type Config struct {
 	SolanaCommitment string
 	USDCMint         string
 
+	// HotWalletSecretBase58 is the Solana-format base58 secret (seed||pubkey)
+	// that a LocalSigner loads for dev/test. Empty in production — KMS
+	// deployments only know the public key out-of-band.
 	HotWalletSecretBase58 string
-	QuoteHMACSecret       []byte
-	WebhookHMACSecret     []byte
-	APIKeyPepper          []byte
+
+	// HotWalletPubkey is the base58-encoded hot wallet public key, consulted
+	// when HotWalletSecretBase58 is empty (e.g. a KMS-backed deployment).
+	// At least one of the two must be set for the api subcommand.
+	HotWalletPubkey string
+
+	QuoteHMACSecret   []byte
+	WebhookHMACSecret []byte
+	APIKeyPepper      []byte
+
+	// ReferenceEncKey is the 32-byte AES-256 key sealing Solana Pay reference
+	// private keys at rest. Sourced from SELATPAY_REFERENCE_ENC_KEY as hex.
+	ReferenceEncKey []byte
+
+	// SolanaPayLabel and SolanaPayMessage are embedded in the generated
+	// Solana Pay URL so the payer's wallet can show "Pay Selatpay — Order
+	// 4242" rather than a bare destination. The message is a Sprintf-safe
+	// template; empty values are omitted.
+	SolanaPayLabel   string
+	SolanaPayMessage string
 
 	QuoteTTL       time.Duration
 	QuoteSpreadBps int
@@ -40,6 +61,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	refKey, err := decodeRefEncKey(os.Getenv("SELATPAY_REFERENCE_ENC_KEY"))
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
 		Env:                   getEnv("SELATPAY_ENV", "local"),
 		LogLevel:              getEnv("SELATPAY_LOG_LEVEL", "info"),
@@ -54,9 +79,13 @@ func Load() (Config, error) {
 		SolanaCommitment:      getEnv("SELATPAY_SOLANA_COMMITMENT", "finalized"),
 		USDCMint:              getEnv("SELATPAY_USDC_MINT", "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
 		HotWalletSecretBase58: os.Getenv("SELATPAY_HOT_WALLET_SECRET_BASE58"),
+		HotWalletPubkey:       os.Getenv("SELATPAY_HOT_WALLET_PUBKEY"),
 		QuoteHMACSecret:       []byte(getEnv("SELATPAY_QUOTE_HMAC_SECRET", "")),
 		WebhookHMACSecret:     []byte(getEnv("SELATPAY_WEBHOOK_HMAC_SECRET", "")),
 		APIKeyPepper:          []byte(getEnv("SELATPAY_API_KEY_PEPPER", "")),
+		ReferenceEncKey:       refKey,
+		SolanaPayLabel:        getEnv("SELATPAY_SOLANA_PAY_LABEL", "Selatpay"),
+		SolanaPayMessage:      getEnv("SELATPAY_SOLANA_PAY_MESSAGE", ""),
 		QuoteTTL:              getDuration("SELATPAY_QUOTE_TTL", 60*time.Second),
 		QuoteSpreadBps:        getInt("SELATPAY_QUOTE_SPREAD_BPS", 50),
 		MockBankURL:           getEnv("SELATPAY_MOCK_BANK_URL", "http://localhost:9100"),
@@ -82,7 +111,25 @@ func (c Config) validate() error {
 	if len(c.APIKeyPepper) == 0 {
 		return fmt.Errorf("SELATPAY_API_KEY_PEPPER is required")
 	}
+	if len(c.ReferenceEncKey) != 32 {
+		return fmt.Errorf("SELATPAY_REFERENCE_ENC_KEY must be 32 bytes of hex (64 chars)")
+	}
 	return nil
+}
+
+// decodeRefEncKey parses SELATPAY_REFERENCE_ENC_KEY as hex. An empty value is
+// passed through so validate() can emit a uniform error; a malformed non-empty
+// value fails fast so a misconfigured deploy doesn't silently fall back to a
+// zero key.
+func decodeRefEncKey(raw string) ([]byte, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	k, err := hex.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("SELATPAY_REFERENCE_ENC_KEY is not valid hex: %w", err)
+	}
+	return k, nil
 }
 
 func getEnv(k, def string) string {
