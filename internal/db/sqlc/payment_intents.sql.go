@@ -13,18 +13,22 @@ import (
 
 const createPaymentIntent = `-- name: CreatePaymentIntent :one
 INSERT INTO payment_intents (
-    merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, state
-) VALUES ($1, $2, $3, $4, $5, $6)
+    merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, state,
+    reference_pubkey, reference_secret_enc, recipient_ata
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, reference_pubkey, reference_secret_enc, recipient_ata, state, created_at, updated_at
 `
 
 type CreatePaymentIntentParams struct {
-	MerchantID       pgtype.UUID
-	ExternalRef      string
-	AmountIdr        int64
-	QuotedAmountUsdc int64
-	QuoteID          pgtype.UUID
-	State            PaymentIntentState
+	MerchantID         pgtype.UUID
+	ExternalRef        string
+	AmountIdr          int64
+	QuotedAmountUsdc   int64
+	QuoteID            pgtype.UUID
+	State              PaymentIntentState
+	ReferencePubkey    *string
+	ReferenceSecretEnc []byte
+	RecipientAta       *string
 }
 
 func (q *Queries) CreatePaymentIntent(ctx context.Context, arg CreatePaymentIntentParams) (PaymentIntent, error) {
@@ -35,6 +39,9 @@ func (q *Queries) CreatePaymentIntent(ctx context.Context, arg CreatePaymentInte
 		arg.QuotedAmountUsdc,
 		arg.QuoteID,
 		arg.State,
+		arg.ReferencePubkey,
+		arg.ReferenceSecretEnc,
+		arg.RecipientAta,
 	)
 	var i PaymentIntent
 	err := row.Scan(

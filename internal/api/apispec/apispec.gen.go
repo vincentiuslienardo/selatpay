@@ -90,9 +90,20 @@ type PaymentIntent struct {
 	// QuotedAmountUsdc USDC amount in minor units (1e-6 USDC; SPL decimals=6).
 	QuotedAmountUsdc int64 `json:"quoted_amount_usdc"`
 
-	// ReferencePubkey Populated once Solana Pay allocation runs (phase 3+).
-	ReferencePubkey *string            `json:"reference_pubkey,omitempty"`
-	State           PaymentIntentState `json:"state"`
+	// RecipientAta Base58 associated token account derived from (hot wallet, USDC
+	// mint). Returned for display; wallets rediscover it themselves
+	// from the URL's recipient and spl-token fields.
+	RecipientAta *string `json:"recipient_ata,omitempty"`
+
+	// ReferencePubkey Base58-encoded ed25519 reference public key attached to the
+	// expected on-chain transfer. The watcher resolves deposits via
+	// getSignaturesForAddress against this key.
+	ReferencePubkey *string `json:"reference_pubkey,omitempty"`
+
+	// SolanaPayUrl Solana Pay transfer-request URL (solana:…) the payer's wallet
+	// consumes. Present once reference allocation has run.
+	SolanaPayUrl *string            `json:"solana_pay_url,omitempty"`
+	State        PaymentIntentState `json:"state"`
 }
 
 // PaymentIntentState defines model for PaymentIntent.State.
@@ -578,30 +589,34 @@ func (sh *strictHandler) GetPaymentIntent(w http.ResponseWriter, r *http.Request
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/7RY724buRF/lQFb4BJA/2zHbiKjH3xO0xjnw/nsBChgGbrRcqTlZZdkyFnFaiCgT9Pv",
+	"fYU+Sp+kGK7+rbRJfMU1X7LaHZK/+c3Mb4b+rDJXemfJclTDz8pjwJKYQvp1pan0jslmix9oIW+MVUOV",
+	"E2oKqqMslqSGu2ZdseuomOVUoiwo8fGa7IxzNTw+Pe0oXnhZEjkYO1PL5bKjAkXvbKR05F9CcEEeMmeZ",
+	"LMsjel+YDNk42/81Oivvtif8MdBUDdUf+ltP+vXX2K93S6doilkwXjZRQ3UT3KSgEtZnKzFZrZJNLwMh",
+	"0w0uSrJ8lZDc0seKYgLkg/MU2NSQsXSV5bHRCXfznIv0DYyFq9e3UBrrAlTWcIRnofIG8/P0IccI1kGs",
+	"Jl35+rynOmrqQomshspYPnuhOqo01pRVqYZHGxqNZZpRUPv+NXg/HQwOeO8oemQKFotxom8f948Ushwt",
+	"d2Ml5JMGLVkhECKbDIw+Fz8+VgSeApQrc8G9c/LR8csEe/P7MP4S/o+VCaTV8L4JqrPL7MNmqZv8ShmL",
+	"C5tcacYjc5rkf3rE0hc1TXMsjB6HVQhb6NDEaIo6nloboQGLm519OVTUgqGkGHGWzvu6awnV1r7Nn0a6",
+	"fSvPDtLjMCWylMR6jNxYoJGpy6Yk9YS0ODAwurFZVRndts86I8ZPtP9YOaZvlfPPyWhtrccrRqqos8MU",
+	"fn/3+hJwU3+N2jui7hmIwTnc3VyDpsyUWMQ/n7VX3iG1gTLjDVkeI+Ph2d9jpNOXgDG6zEgMgN0HsoBZ",
+	"lvBoCmZOGqbBlfAsdwyfsCiIOwnUyJbG8vMe3BJXwYqdC6BN9AUuzlemEQJpEzM3pwCGgXMqIxVziiOb",
+	"tuWc4P3t9XdiuAILaDVEX3RrNFNDhY69kRUpr4oCJ1ItjUTfBijQlALZjMa+mnyou0Gb012ykuoaSB+f",
+	"nh69gs1C8NWkMBl8oAUgM2Z54kWAjiw9esqEKGe7WY7GAge0cUqhB+9ygk/IWU5BBNuJk6DJuyjBnBsc",
+	"2RnxnZlZ5CpQfOPChdaBYgScobFR2DFRDn6is9EVaHHscTGuQnHo6l36Dje42MDsrsRFOIdn9QbD//zj",
+	"n89TIDwuKHwXV7Eb2czZWJUUe3ATKEponDC05QqLwtUtLzWHUNmnQmesC4ms9Ip75clq+dZR08pqkuqL",
+	"xFzU7zwaPXaVaKIUXEGcLOjRJ+HqqCmagvSOXn1B31JZ71Z95ytq3lrBaxFY+9AQsDa9/HmtGU2drLHH",
+	"3yR7T1QpjyY0W8vV69u+1GybdVhFopk7r2uxgdpOCgDnzmiYFg4Zgqus7nIwHp5Rb9aDkRr0BoPB4Ozo",
+	"TyOV5Okw5D4Q6vHEx/3GcHJcN+TV3CD77MwRg0NlawtqcnrlTeOwzi7VhwESZJRVwfDiTgS8js7bErOL",
+	"SqaBfWKkzDOpjwBR9I3zQAT1sBmHIwvwt+4dFcge05zZvdIAsJk9ujFznnSSF6PJspkaCnvL3pmSImPp",
+	"4fbN5cnJyStwAd5b8wiRMmd1PIeyigwTgk+Gc2Ph3/86GQzi3jYbrYGcHuHtjxeX3bu3F8enZyByLMZf",
+	"+Meb80cjCyVx7nR69Mh5eog5Hp+ePZs4vXieKr515G7Dsk0N9Ebm8DT3Gjt1h1xfBhdjd+KCFrZZFCVz",
+	"xkJSBpIpBC5urnpwURRQVowsqUpWe2dsaj0pR0Z21/W1AGLFudBfy9c5ZIX0HoknSp+zDIGkk3UjTkXy",
+	"OBhpWjF3VaEFAaCFX/YuFb+sEgGchZuf7t7VasiGUxWuyRDQqqPmFGLt56B31BtIjThPFr1RQ3WSXkla",
+	"c54ysp8TFpz/XZ5nlERD5CShv9JqqN6uvu9dVY4Hg72LCtMj932BZu+K0nLpaYbjpx8a5aKG9w8dFauy",
+	"xLBQQ3Vt5mSlnfngJvVdpT8/6vt6XhybBKC+v7nY4kDLbSYRsL3r3bcPXluT/t5dcPlQKwVF/t7pxe92",
+	"Y/vKxWvZVCfpf8uDkBz9bkiadLUErYaqJbte1KnQtt0G3/oyKtZHv8n61ZOtl7tZU+MDhFWegFm70po+",
+	"/c9GL79YA38l/kb+JJ2SotqqVGofzYjt/m3gG+22TrGvFtz/MbpSkkL+i/+N/DfEWX7APUykN9XH7RT7",
+	"ble8fxC/I4X5mtgmrmuXYQGa5qqj0myqcmY/7PdlXixyF3n4cvByoJYPy/8GAAD//wYA/RPdEQAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

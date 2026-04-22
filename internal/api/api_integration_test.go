@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -32,7 +33,12 @@ import (
 	ldb "github.com/vincentiuslienardo/selatpay/internal/db"
 	dbq "github.com/vincentiuslienardo/selatpay/internal/db/sqlc"
 	"github.com/vincentiuslienardo/selatpay/internal/quoter"
+	"github.com/vincentiuslienardo/selatpay/internal/solanapay"
 )
+
+// devnetUSDCMint is Circle's official USDC mint on Solana devnet; pinned so
+// integration tests don't depend on env configuration.
+const devnetUSDCMint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 
 type fixture struct {
 	t          *testing.T
@@ -41,6 +47,8 @@ type fixture struct {
 	merchantID uuid.UUID
 	keyID      string
 	rawSecret  []byte
+	hotWallet  solana.PublicKey
+	usdcMint   solana.PublicKey
 }
 
 func startFixture(t *testing.T) *fixture {
@@ -91,13 +99,30 @@ func startFixture(t *testing.T) *fixture {
 		t.Fatalf("create api key: %v", err)
 	}
 
+	refKey := make([]byte, 32)
+	if _, err := rand.Read(refKey); err != nil {
+		t.Fatalf("rand ref key: %v", err)
+	}
+	allocator, err := solanapay.NewAllocator(refKey)
+	if err != nil {
+		t.Fatalf("allocator: %v", err)
+	}
+	hotWallet := solana.NewWallet().PublicKey()
+	usdcMint := solana.MustPublicKeyFromBase58(devnetUSDCMint)
+
 	router := api.NewRouter(api.Deps{
 		Pool: pool,
 		Quoter: quoter.New(pool, quoter.NewMockProvider(quoter.DefaultMockRates()), []byte("quote-sk"), quoter.Options{
 			TTL:       time.Minute,
 			SpreadBps: 50,
 		}),
-		KeyStore: auth.NewPGKeyStore(pool, pepper),
+		KeyStore:         auth.NewPGKeyStore(pool, pepper),
+		Allocator:        allocator,
+		HotWalletPubkey:  hotWallet,
+		USDCMint:         usdcMint,
+		USDCDecimals:     6,
+		SolanaPayLabel:   "Selatpay Test",
+		SolanaPayMessage: "",
 	})
 	srv := httptest.NewServer(router)
 
@@ -114,6 +139,8 @@ func startFixture(t *testing.T) *fixture {
 		merchantID: ldb.FromPgUUID(merchant.ID),
 		keyID:      keyID,
 		rawSecret:  auth.DeriveSecret(pepper, raw),
+		hotWallet:  hotWallet,
+		usdcMint:   usdcMint,
 	}
 }
 
@@ -193,6 +220,31 @@ func TestCreatePaymentIntent_EndToEnd(t *testing.T) {
 	}
 	if time.Until(intent.Quote.ExpiresAt) <= 0 {
 		t.Fatalf("quote must not be expired on issuance")
+	}
+	if intent.ReferencePubkey == nil || *intent.ReferencePubkey == "" {
+		t.Fatalf("reference_pubkey must be populated")
+	}
+	if _, err := solana.PublicKeyFromBase58(*intent.ReferencePubkey); err != nil {
+		t.Fatalf("reference_pubkey is not a valid Solana pubkey: %v", err)
+	}
+	if intent.RecipientAta == nil || *intent.RecipientAta == "" {
+		t.Fatalf("recipient_ata must be populated")
+	}
+	if intent.SolanaPayUrl == nil || !strings.HasPrefix(*intent.SolanaPayUrl, "solana:") {
+		t.Fatalf("solana_pay_url must begin with 'solana:', got %v", intent.SolanaPayUrl)
+	}
+	parsed, err := solanapay.ParseURL(*intent.SolanaPayUrl)
+	if err != nil {
+		t.Fatalf("parse solana pay url: %v", err)
+	}
+	if parsed.Recipient != f.hotWallet {
+		t.Fatalf("solana pay recipient mismatch: got %s, want %s", parsed.Recipient, f.hotWallet)
+	}
+	if parsed.SPLToken == nil || *parsed.SPLToken != f.usdcMint {
+		t.Fatalf("solana pay spl-token mismatch: got %v, want %s", parsed.SPLToken, f.usdcMint)
+	}
+	if len(parsed.References) != 1 || parsed.References[0].String() != *intent.ReferencePubkey {
+		t.Fatalf("solana pay reference mismatch: url=%v, intent=%s", parsed.References, *intent.ReferencePubkey)
 	}
 
 	// Second create with same external_ref returns the same intent (200, not 201).

@@ -151,7 +151,23 @@ components:
         reference_pubkey:
           type: string
           nullable: true
-          description: Populated once Solana Pay allocation runs (phase 3+).
+          description: |
+            Base58-encoded ed25519 reference public key attached to the
+            expected on-chain transfer. The watcher resolves deposits via
+            getSignaturesForAddress against this key.
+        recipient_ata:
+          type: string
+          nullable: true
+          description: |
+            Base58 associated token account derived from (hot wallet, USDC
+            mint). Returned for display; wallets rediscover it themselves
+            from the URL's recipient and spl-token fields.
+        solana_pay_url:
+          type: string
+          nullable: true
+          description: |
+            Solana Pay transfer-request URL (solana:…) the payer's wallet
+            consumes. Present once reference allocation has run.
         created_at:
           type: string
           format: date-time

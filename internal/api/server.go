@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
@@ -14,15 +15,37 @@ import (
 	"github.com/vincentiuslienardo/selatpay/internal/auth"
 	"github.com/vincentiuslienardo/selatpay/internal/idempotency"
 	"github.com/vincentiuslienardo/selatpay/internal/quoter"
+	"github.com/vincentiuslienardo/selatpay/internal/solanapay"
 )
 
 type Deps struct {
-	Pool          *pgxpool.Pool
-	Redis         *redis.Client
-	Quoter        *quoter.Quoter
-	KeyStore      auth.KeyStore
+	Pool           *pgxpool.Pool
+	Redis          *redis.Client
+	Quoter         *quoter.Quoter
+	KeyStore       auth.KeyStore
 	IdempotencyTTL time.Duration
-	Now           func() time.Time
+	Now            func() time.Time
+
+	// Allocator mints fresh reference keypairs for Solana Pay intents and
+	// seals the private key for at-rest storage. Required.
+	Allocator *solanapay.Allocator
+
+	// HotWalletPubkey is the transfer recipient embedded in every Solana
+	// Pay URL. Wallets derive the destination ATA from (pubkey, USDCMint).
+	HotWalletPubkey solana.PublicKey
+
+	// USDCMint is the SPL mint the intent is denominated in (USDC on
+	// devnet or mainnet). USDCDecimals is typically 6.
+	USDCMint     solana.PublicKey
+	USDCDecimals uint8
+
+	// SolanaPayLabel and SolanaPayMessage populate the URL's label/message
+	// parameters so the payer's wallet shows a friendly label rather than
+	// a bare pubkey. SolanaPayMessage is a static string; per-intent detail
+	// (external_ref) is appended automatically when SolanaPayMessage is
+	// empty.
+	SolanaPayLabel   string
+	SolanaPayMessage string
 }
 
 // NewRouter builds the chi router with middleware chain for the api subcommand.
@@ -34,8 +57,19 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 
+	h := &Handlers{
+		Pool:             d.Pool,
+		Quoter:           d.Quoter,
+		Allocator:        d.Allocator,
+		HotWalletPubkey:  d.HotWalletPubkey,
+		USDCMint:         d.USDCMint,
+		USDCDecimals:     d.USDCDecimals,
+		SolanaPayLabel:   d.SolanaPayLabel,
+		SolanaPayMessage: d.SolanaPayMessage,
+	}
+
 	// Public routes first — no auth, no idempotency.
-	r.Get("/healthz", (&Handlers{Pool: d.Pool, Quoter: d.Quoter}).Healthz)
+	r.Get("/healthz", h.Healthz)
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(auth.Middleware(d.KeyStore, d.Now))
@@ -53,7 +87,7 @@ func NewRouter(d Deps) http.Handler {
 		})
 		pr.Use(idem.Handler)
 
-		pr.Mount("/", apispec.Handler(&Handlers{Pool: d.Pool, Quoter: d.Quoter}))
+		pr.Mount("/", apispec.Handler(h))
 	})
 	return r
 }

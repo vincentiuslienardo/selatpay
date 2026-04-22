@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,12 +18,24 @@ import (
 	ldb "github.com/vincentiuslienardo/selatpay/internal/db"
 	dbq "github.com/vincentiuslienardo/selatpay/internal/db/sqlc"
 	"github.com/vincentiuslienardo/selatpay/internal/quoter"
+	"github.com/vincentiuslienardo/selatpay/internal/solanapay"
 )
 
-// Handlers satisfies the oapi-codegen-generated ServerInterface.
+// Handlers satisfies the oapi-codegen-generated ServerInterface. It owns the
+// subset of Deps needed to serve a single request — the Pool + Quoter for
+// persistence and quoting, the Allocator for reference keypair minting, and
+// the static Solana Pay metadata (hot wallet, mint, label) for URL assembly.
 type Handlers struct {
-	Pool   *pgxpool.Pool
-	Quoter *quoter.Quoter
+	Pool      *pgxpool.Pool
+	Quoter    *quoter.Quoter
+	Allocator *solanapay.Allocator
+
+	HotWalletPubkey solana.PublicKey
+	USDCMint        solana.PublicKey
+	USDCDecimals    uint8
+
+	SolanaPayLabel   string
+	SolanaPayMessage string
 }
 
 func (h *Handlers) Healthz(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +71,7 @@ func (h *Handlers) CreatePaymentIntent(w http.ResponseWriter, r *http.Request, _
 			writeError(w, http.StatusInternalServerError, "fetch_quote", err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, intentToAPI(existing, quote))
+		writeJSON(w, http.StatusOK, h.intentToAPI(existing, quote))
 		return
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusInternalServerError, "lookup", err.Error())
@@ -71,13 +84,29 @@ func (h *Handlers) CreatePaymentIntent(w http.ResponseWriter, r *http.Request, _
 		return
 	}
 
+	ref, err := h.Allocator.Allocate()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "allocate_reference", err.Error())
+		return
+	}
+	ata, _, err := solana.FindAssociatedTokenAddress(h.HotWalletPubkey, h.USDCMint)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "derive_ata", err.Error())
+		return
+	}
+	refPubStr := ref.Pubkey.String()
+	ataStr := ata.String()
+
 	created, err := q.CreatePaymentIntent(r.Context(), dbq.CreatePaymentIntentParams{
-		MerchantID:       ldb.PgUUID(merchantID),
-		ExternalRef:      body.ExternalRef,
-		AmountIdr:        body.AmountIdr,
-		QuotedAmountUsdc: qt.AmountUSDC,
-		QuoteID:          ldb.PgUUID(qt.ID),
-		State:            dbq.PaymentIntentStatePending,
+		MerchantID:         ldb.PgUUID(merchantID),
+		ExternalRef:        body.ExternalRef,
+		AmountIdr:          body.AmountIdr,
+		QuotedAmountUsdc:   qt.AmountUSDC,
+		QuoteID:            ldb.PgUUID(qt.ID),
+		State:              dbq.PaymentIntentStatePending,
+		ReferencePubkey:    &refPubStr,
+		ReferenceSecretEnc: ref.SecretEnc,
+		RecipientAta:       &ataStr,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "create_intent", err.Error())
@@ -89,7 +118,7 @@ func (h *Handlers) CreatePaymentIntent(w http.ResponseWriter, r *http.Request, _
 		writeError(w, http.StatusInternalServerError, "fetch_quote", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, intentToAPI(created, dbQuote))
+	writeJSON(w, http.StatusCreated, h.intentToAPI(created, dbQuote))
 }
 
 func (h *Handlers) GetPaymentIntent(w http.ResponseWriter, r *http.Request, id oapitypes.UUID) {
@@ -119,7 +148,7 @@ func (h *Handlers) GetPaymentIntent(w http.ResponseWriter, r *http.Request, id o
 		writeError(w, http.StatusInternalServerError, "fetch_quote", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, intentToAPI(intent, quote))
+	writeJSON(w, http.StatusOK, h.intentToAPI(intent, quote))
 }
 
 func validateCreateRequest(r apispec.CreatePaymentIntentRequest) error {
@@ -135,8 +164,8 @@ func validateCreateRequest(r apispec.CreatePaymentIntentRequest) error {
 	return nil
 }
 
-func intentToAPI(p dbq.PaymentIntent, q dbq.Quote) apispec.PaymentIntent {
-	return apispec.PaymentIntent{
+func (h *Handlers) intentToAPI(p dbq.PaymentIntent, q dbq.Quote) apispec.PaymentIntent {
+	out := apispec.PaymentIntent{
 		Id:               oapitypes.UUID(ldb.FromPgUUID(p.ID)),
 		MerchantId:       oapitypes.UUID(ldb.FromPgUUID(p.MerchantID)),
 		ExternalRef:      p.ExternalRef,
@@ -144,6 +173,7 @@ func intentToAPI(p dbq.PaymentIntent, q dbq.Quote) apispec.PaymentIntent {
 		QuotedAmountUsdc: p.QuotedAmountUsdc,
 		State:            apispec.PaymentIntentState(p.State),
 		ReferencePubkey:  p.ReferencePubkey,
+		RecipientAta:     p.RecipientAta,
 		CreatedAt:        p.CreatedAt.Time,
 		Quote: apispec.Quote{
 			Id:        oapitypes.UUID(ldb.FromPgUUID(q.ID)),
@@ -153,6 +183,37 @@ func intentToAPI(p dbq.PaymentIntent, q dbq.Quote) apispec.PaymentIntent {
 			ExpiresAt: q.ExpiresAt.Time,
 		},
 	}
+	if url, err := h.buildPayURL(p); err == nil && url != "" {
+		out.SolanaPayUrl = &url
+	}
+	return out
+}
+
+// buildPayURL reconstructs the Solana Pay URL from the persisted intent.
+// Storing the URL would duplicate derived state that can drift from the
+// source fields; rebuilding keeps the DB schema narrow and guarantees the
+// URL matches the intent's amount and reference at read time.
+func (h *Handlers) buildPayURL(p dbq.PaymentIntent) (string, error) {
+	if p.ReferencePubkey == nil || *p.ReferencePubkey == "" {
+		return "", nil
+	}
+	refPub, err := solana.PublicKeyFromBase58(*p.ReferencePubkey)
+	if err != nil {
+		return "", err
+	}
+	msg := h.SolanaPayMessage
+	if msg == "" {
+		msg = "Order " + p.ExternalRef
+	}
+	mint := h.USDCMint
+	return solanapay.BuildURL(solanapay.URLParams{
+		Recipient:  h.HotWalletPubkey,
+		SPLToken:   &mint,
+		Amount:     solanapay.FormatAmount(uint64(p.QuotedAmountUsdc), h.USDCDecimals),
+		References: []solana.PublicKey{refPub},
+		Label:      h.SolanaPayLabel,
+		Message:    msg,
+	})
 }
 
 // formatRate renders rate_num / 10^rate_scale as a non-scientific decimal
@@ -168,4 +229,3 @@ func formatRate(num int64, scale int16) string {
 	}
 	return str[:len(str)-int(scale)] + "." + str[len(str)-int(scale):]
 }
-

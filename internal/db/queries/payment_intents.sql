@@ -1,7 +1,8 @@
 -- name: CreatePaymentIntent :one
 INSERT INTO payment_intents (
-    merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, state
-) VALUES ($1, $2, $3, $4, $5, $6)
+    merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, state,
+    reference_pubkey, reference_secret_enc, recipient_ata
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetPaymentIntentByID :one
