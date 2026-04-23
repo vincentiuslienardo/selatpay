@@ -62,7 +62,7 @@ func run(ctx context.Context, cmd string, args []string, cfg config.Config, logg
 	case "api":
 		return runAPI(ctx, cfg, logger)
 	case "watcher":
-		return runStub(ctx, "watcher", logger)
+		return runWatcher(ctx, cfg, logger)
 	case "orchestrator":
 		return runStub(ctx, "orchestrator", logger)
 	case "dispatcher":
