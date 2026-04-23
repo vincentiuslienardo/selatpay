@@ -145,6 +145,49 @@ func (ns NullPostingDirection) Value() (driver.Value, error) {
 	return string(ns.PostingDirection), nil
 }
 
+type SolanaCommitment string
+
+const (
+	SolanaCommitmentProcessed SolanaCommitment = "processed"
+	SolanaCommitmentConfirmed SolanaCommitment = "confirmed"
+	SolanaCommitmentFinalized SolanaCommitment = "finalized"
+)
+
+func (e *SolanaCommitment) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SolanaCommitment(s)
+	case string:
+		*e = SolanaCommitment(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SolanaCommitment: %T", src)
+	}
+	return nil
+}
+
+type NullSolanaCommitment struct {
+	SolanaCommitment SolanaCommitment
+	Valid            bool // Valid is true if SolanaCommitment is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSolanaCommitment) Scan(value interface{}) error {
+	if value == nil {
+		ns.SolanaCommitment, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SolanaCommitment.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSolanaCommitment) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SolanaCommitment), nil
+}
+
 type Account struct {
 	ID        pgtype.UUID
 	Code      string
@@ -184,6 +227,21 @@ type Merchant struct {
 	ID        pgtype.UUID
 	Name      string
 	CreatedAt pgtype.Timestamptz
+}
+
+type OnchainPayment struct {
+	Signature       string
+	Slot            int64
+	BlockTime       pgtype.Timestamptz
+	FromAta         string
+	ToAta           string
+	Mint            string
+	Amount          int64
+	ReferencePubkey *string
+	Commitment      SolanaCommitment
+	IntentID        pgtype.UUID
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type PaymentIntent struct {

@@ -115,6 +115,39 @@ func (q *Queries) GetPaymentIntentByMerchantRef(ctx context.Context, arg GetPaym
 	return i, err
 }
 
+const listActiveReferenceIntents = `-- name: ListActiveReferenceIntents :many
+SELECT id, reference_pubkey
+FROM payment_intents
+WHERE state IN ('pending', 'funded')
+  AND reference_pubkey IS NOT NULL
+ORDER BY created_at
+`
+
+type ListActiveReferenceIntentsRow struct {
+	ID              pgtype.UUID
+	ReferencePubkey *string
+}
+
+func (q *Queries) ListActiveReferenceIntents(ctx context.Context) ([]ListActiveReferenceIntentsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveReferenceIntents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveReferenceIntentsRow{}
+	for rows.Next() {
+		var i ListActiveReferenceIntentsRow
+		if err := rows.Scan(&i.ID, &i.ReferencePubkey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePaymentIntentReference = `-- name: UpdatePaymentIntentReference :one
 UPDATE payment_intents
 SET reference_pubkey = $2,

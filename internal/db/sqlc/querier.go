@@ -14,6 +14,7 @@ type Querier interface {
 	// Positive balance is expressed in the account's "natural" direction:
 	// debit-normal for asset/expense, credit-normal for liability/equity/revenue.
 	AccountBalance(ctx context.Context, id pgtype.UUID) (AccountBalanceRow, error)
+	CountOnchainPaymentsByIntent(ctx context.Context, intentID pgtype.UUID) (int64, error)
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateJournalEntry(ctx context.Context, arg CreateJournalEntryParams) (JournalEntry, error)
@@ -26,15 +27,19 @@ type Querier interface {
 	GetActiveAPIKeyByKeyID(ctx context.Context, keyID string) (GetActiveAPIKeyByKeyIDRow, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetJournalEntryByExternalRef(ctx context.Context, externalRef string) (JournalEntry, error)
+	GetOnchainPaymentBySignature(ctx context.Context, signature string) (OnchainPayment, error)
 	GetPaymentIntentByID(ctx context.Context, id pgtype.UUID) (PaymentIntent, error)
 	GetPaymentIntentByMerchantRef(ctx context.Context, arg GetPaymentIntentByMerchantRefParams) (PaymentIntent, error)
 	GetQuote(ctx context.Context, id pgtype.UUID) (Quote, error)
 	InsertIdempotencyKey(ctx context.Context, arg InsertIdempotencyKeyParams) (IdempotencyKey, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) (Posting, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
+	ListActiveReferenceIntents(ctx context.Context) ([]ListActiveReferenceIntentsRow, error)
 	ListPostingsByEntry(ctx context.Context, journalEntryID pgtype.UUID) ([]Posting, error)
+	ListUnfinalizedOnchainPayments(ctx context.Context, limit int32) ([]OnchainPayment, error)
 	UpdatePaymentIntentReference(ctx context.Context, arg UpdatePaymentIntentReferenceParams) (PaymentIntent, error)
 	UpdatePaymentIntentState(ctx context.Context, arg UpdatePaymentIntentStateParams) (PaymentIntent, error)
+	UpsertOnchainPayment(ctx context.Context, arg UpsertOnchainPaymentParams) (OnchainPayment, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -27,3 +27,10 @@ SET state = $2,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: ListActiveReferenceIntents :many
+SELECT id, reference_pubkey
+FROM payment_intents
+WHERE state IN ('pending', 'funded')
+  AND reference_pubkey IS NOT NULL
+ORDER BY created_at;
