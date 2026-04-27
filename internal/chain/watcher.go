@@ -12,11 +12,14 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/ws"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	ldb "github.com/vincentiuslienardo/selatpay/internal/db"
 	dbq "github.com/vincentiuslienardo/selatpay/internal/db/sqlc"
+	"github.com/vincentiuslienardo/selatpay/internal/saga"
+	"github.com/vincentiuslienardo/selatpay/internal/saga/steps"
 )
 
 // RPCClient is the narrow RPC surface the watcher uses. Stating it as an
@@ -213,7 +216,13 @@ func (w *Watcher) ProcessSignature(ctx context.Context, sig solana.Signature, co
 		refPtr = &s
 	}
 
-	q := dbq.New(w.pool)
+	dbtx, err := w.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("chain: begin tx: %w", err)
+	}
+	defer func() { _ = dbtx.Rollback(ctx) }()
+
+	q := dbq.New(dbtx)
 	row, err := q.UpsertOnchainPayment(ctx, dbq.UpsertOnchainPaymentParams{
 		Signature:       sig.String(),
 		Slot:            int64(resp.Slot),
@@ -228,6 +237,27 @@ func (w *Watcher) ProcessSignature(ctx context.Context, sig solana.Signature, co
 	})
 	if err != nil {
 		return fmt.Errorf("chain: upsert onchain_payment %s: %w", sig, err)
+	}
+
+	// The watcher is the saga's only producer: a finalized, intent-linked
+	// deposit is the trigger that hands settlement off to the orchestrator.
+	// Doing the enqueue inside the same tx as the upsert is what gives
+	// Phase 5 its atomicity guarantee — there is no observable state where
+	// onchain_payments shows finalized but no saga exists to drive it.
+	// EnqueueSagaRun is idempotent on (intent_id, saga_kind), so a replay
+	// (e.g., promote loop revisiting an already-finalized row) is a no-op.
+	if row.Commitment == dbq.SolanaCommitmentFinalized && row.IntentID.Valid {
+		if _, err := q.EnqueueSagaRun(ctx, dbq.EnqueueSagaRunParams{
+			IntentID:    row.IntentID,
+			SagaKind:    string(saga.KindSettlement),
+			CurrentStep: steps.FirstStep,
+		}); err != nil {
+			return fmt.Errorf("chain: enqueue saga run for %s: %w", sig, err)
+		}
+	}
+
+	if err := dbtx.Commit(ctx); err != nil {
+		return fmt.Errorf("chain: commit tx: %w", err)
 	}
 	w.log.Info("onchain payment upserted",
 		"sig", row.Signature,
