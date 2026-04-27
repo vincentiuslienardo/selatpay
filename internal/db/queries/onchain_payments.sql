@@ -23,3 +23,9 @@ LIMIT $1;
 
 -- name: CountOnchainPaymentsByIntent :one
 SELECT COUNT(*) FROM onchain_payments WHERE intent_id = $1;
+
+-- name: GetFinalizedDepositForIntent :one
+SELECT * FROM onchain_payments
+WHERE intent_id = $1 AND commitment = 'finalized'
+ORDER BY created_at
+LIMIT 1;

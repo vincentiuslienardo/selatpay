@@ -48,6 +48,7 @@ type Querier interface {
 	GetAccountByCodeCurrency(ctx context.Context, arg GetAccountByCodeCurrencyParams) (Account, error)
 	GetAccountByID(ctx context.Context, id pgtype.UUID) (Account, error)
 	GetActiveAPIKeyByKeyID(ctx context.Context, keyID string) (GetActiveAPIKeyByKeyIDRow, error)
+	GetFinalizedDepositForIntent(ctx context.Context, intentID pgtype.UUID) (OnchainPayment, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetJournalEntryByExternalRef(ctx context.Context, externalRef string) (JournalEntry, error)
 	GetOnchainPaymentBySignature(ctx context.Context, signature string) (OnchainPayment, error)

@@ -22,6 +22,33 @@ func (q *Queries) CountOnchainPaymentsByIntent(ctx context.Context, intentID pgt
 	return count, err
 }
 
+const getFinalizedDepositForIntent = `-- name: GetFinalizedDepositForIntent :one
+SELECT signature, slot, block_time, from_ata, to_ata, mint, amount, reference_pubkey, commitment, intent_id, created_at, updated_at FROM onchain_payments
+WHERE intent_id = $1 AND commitment = 'finalized'
+ORDER BY created_at
+LIMIT 1
+`
+
+func (q *Queries) GetFinalizedDepositForIntent(ctx context.Context, intentID pgtype.UUID) (OnchainPayment, error) {
+	row := q.db.QueryRow(ctx, getFinalizedDepositForIntent, intentID)
+	var i OnchainPayment
+	err := row.Scan(
+		&i.Signature,
+		&i.Slot,
+		&i.BlockTime,
+		&i.FromAta,
+		&i.ToAta,
+		&i.Mint,
+		&i.Amount,
+		&i.ReferencePubkey,
+		&i.Commitment,
+		&i.IntentID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getOnchainPaymentBySignature = `-- name: GetOnchainPaymentBySignature :one
 SELECT signature, slot, block_time, from_ata, to_ata, mint, amount, reference_pubkey, commitment, intent_id, created_at, updated_at FROM onchain_payments WHERE signature = $1
 `

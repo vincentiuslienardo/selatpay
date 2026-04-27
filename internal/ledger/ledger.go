@@ -36,12 +36,32 @@ func (l *Ledger) Post(ctx context.Context, e Entry) (JournalEntry, error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	q := dbq.New(tx)
+	je, err := postWith(ctx, dbq.New(tx), e)
+	if err != nil {
+		return JournalEntry{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return JournalEntry{}, fmt.Errorf("commit: %w", err)
+	}
+	return je, nil
+}
 
+// PostTx records a balanced journal entry inside the caller's existing
+// transaction. Saga steps use this so the journal write commits atomically
+// with the saga advance and any other side effects (intent state change,
+// outbox publish) the step performs in the same tx.
+func (l *Ledger) PostTx(ctx context.Context, tx pgx.Tx, e Entry) (JournalEntry, error) {
+	if err := Validate(e); err != nil {
+		return JournalEntry{}, err
+	}
+	return postWith(ctx, dbq.New(tx), e)
+}
+
+// postWith runs the validate-already-done lookup-then-insert path against
+// any DBTX-backed queries handle. It does not begin or commit the tx; the
+// caller controls the transaction lifecycle.
+func postWith(ctx context.Context, q *dbq.Queries, e Entry) (JournalEntry, error) {
 	if existing, err := q.GetJournalEntryByExternalRef(ctx, e.ExternalRef); err == nil {
-		if rerr := tx.Rollback(ctx); rerr != nil && !errors.Is(rerr, pgx.ErrTxClosed) {
-			return JournalEntry{}, fmt.Errorf("rollback: %w", rerr)
-		}
 		return toJournalEntry(existing), nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return JournalEntry{}, fmt.Errorf("lookup external_ref: %w", err)
@@ -79,10 +99,27 @@ func (l *Ledger) Post(ctx context.Context, e Entry) (JournalEntry, error) {
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return JournalEntry{}, fmt.Errorf("commit: %w", err)
-	}
 	return toJournalEntry(created), nil
+}
+
+// GetAccountByCodeTx resolves a system account inside an existing
+// transaction. Returns ErrAccountNotFound if the (code, currency) pair
+// does not exist; saga steps treat that as a deploy bug because the
+// chart of accounts migration is supposed to seed every code that
+// step code references.
+func (l *Ledger) GetAccountByCodeTx(ctx context.Context, tx pgx.Tx, code, currency string) (Account, error) {
+	q := dbq.New(tx)
+	acct, err := q.GetAccountByCodeCurrency(ctx, dbq.GetAccountByCodeCurrencyParams{
+		Code:     code,
+		Currency: currency,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Account{}, ErrAccountNotFound
+		}
+		return Account{}, fmt.Errorf("get account by code: %w", err)
+	}
+	return toAccount(acct), nil
 }
 
 func (l *Ledger) CreateAccount(ctx context.Context, code string, accType AccountType, currency string) (Account, error) {
