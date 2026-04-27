@@ -14,6 +14,22 @@ type Querier interface {
 	// Positive balance is expressed in the account's "natural" direction:
 	// debit-normal for asset/expense, credit-normal for liability/equity/revenue.
 	AccountBalance(ctx context.Context, id pgtype.UUID) (AccountBalanceRow, error)
+	// Step succeeded and the saga has more work to do. Resets attempts and
+	// releases the lease so the next worker can pick it up immediately.
+	AdvanceSagaStep(ctx context.Context, arg AdvanceSagaStepParams) (SagaRun, error)
+	// Pulls a batch of undelivered messages whose backoff window has elapsed.
+	// Caller is expected to hold a pg_try_advisory_lock on the topic so only
+	// one dispatcher process drains it; SKIP LOCKED is still here for safety
+	// in case two dispatchers race the lock. Ordered by next_attempt_at to
+	// preserve fair retry sequencing.
+	ClaimDueOutbox(ctx context.Context, arg ClaimDueOutboxParams) ([]Outbox, error)
+	// Claims one due saga and stamps a time-bound lease on it. SKIP LOCKED lets
+	// N orchestrator workers run side by side without contention; expired
+	// leases are reclaimable so a worker crashing mid-step doesn't strand the
+	// saga. Returns no rows when nothing is due — the runner uses pgx.ErrNoRows
+	// as its idle signal.
+	ClaimDueSagaRun(ctx context.Context, arg ClaimDueSagaRunParams) (SagaRun, error)
+	CompleteSagaRun(ctx context.Context, id pgtype.UUID) (SagaRun, error)
 	CountOnchainPaymentsByIntent(ctx context.Context, intentID pgtype.UUID) (int64, error)
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
@@ -22,21 +38,40 @@ type Querier interface {
 	CreatePaymentIntent(ctx context.Context, arg CreatePaymentIntentParams) (PaymentIntent, error)
 	CreateQuote(ctx context.Context, arg CreateQuoteParams) (Quote, error)
 	DeleteExpiredIdempotencyKeys(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error)
+	// Idempotent saga insert keyed on (intent_id, saga_kind). The ON CONFLICT
+	// branch is a no-op update of intent_id (a value it already equals), which
+	// forces RETURNING * to fire on conflict — letting the caller treat enqueue
+	// and re-enqueue with the same return shape and never have to follow up
+	// with a SELECT.
+	EnqueueSagaRun(ctx context.Context, arg EnqueueSagaRunParams) (SagaRun, error)
+	FailSagaRun(ctx context.Context, arg FailSagaRunParams) (SagaRun, error)
 	GetAccountByCodeCurrency(ctx context.Context, arg GetAccountByCodeCurrencyParams) (Account, error)
 	GetAccountByID(ctx context.Context, id pgtype.UUID) (Account, error)
 	GetActiveAPIKeyByKeyID(ctx context.Context, keyID string) (GetActiveAPIKeyByKeyIDRow, error)
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetJournalEntryByExternalRef(ctx context.Context, externalRef string) (JournalEntry, error)
 	GetOnchainPaymentBySignature(ctx context.Context, signature string) (OnchainPayment, error)
+	GetOutboxByID(ctx context.Context, id pgtype.UUID) (Outbox, error)
 	GetPaymentIntentByID(ctx context.Context, id pgtype.UUID) (PaymentIntent, error)
 	GetPaymentIntentByMerchantRef(ctx context.Context, arg GetPaymentIntentByMerchantRefParams) (PaymentIntent, error)
 	GetQuote(ctx context.Context, id pgtype.UUID) (Quote, error)
+	GetSagaRunByID(ctx context.Context, id pgtype.UUID) (SagaRun, error)
+	GetSagaRunByIntent(ctx context.Context, arg GetSagaRunByIntentParams) (SagaRun, error)
 	InsertIdempotencyKey(ctx context.Context, arg InsertIdempotencyKeyParams) (IdempotencyKey, error)
 	InsertPosting(ctx context.Context, arg InsertPostingParams) (Posting, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
 	ListActiveReferenceIntents(ctx context.Context) ([]ListActiveReferenceIntentsRow, error)
 	ListPostingsByEntry(ctx context.Context, journalEntryID pgtype.UUID) ([]Posting, error)
+	ListSagaRunsByState(ctx context.Context, arg ListSagaRunsByStateParams) ([]SagaRun, error)
+	ListUndeliveredOutbox(ctx context.Context, limit int32) ([]Outbox, error)
 	ListUnfinalizedOnchainPayments(ctx context.Context, limit int32) ([]OnchainPayment, error)
+	MarkOutboxDelivered(ctx context.Context, id pgtype.UUID) (Outbox, error)
+	PublishOutbox(ctx context.Context, arg PublishOutboxParams) (Outbox, error)
+	ScheduleOutboxRetry(ctx context.Context, arg ScheduleOutboxRetryParams) (Outbox, error)
+	// Step failed but is retryable. Caller computes next_run_at from the attempt
+	// count using exponential backoff with jitter; storing the absolute time
+	// means dispatcher restarts cannot reset the schedule.
+	ScheduleSagaRetry(ctx context.Context, arg ScheduleSagaRetryParams) (SagaRun, error)
 	UpdatePaymentIntentReference(ctx context.Context, arg UpdatePaymentIntentReferenceParams) (PaymentIntent, error)
 	UpdatePaymentIntentState(ctx context.Context, arg UpdatePaymentIntentStateParams) (PaymentIntent, error)
 	UpsertOnchainPayment(ctx context.Context, arg UpsertOnchainPaymentParams) (OnchainPayment, error)

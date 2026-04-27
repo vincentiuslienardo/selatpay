@@ -145,6 +145,50 @@ func (ns NullPostingDirection) Value() (driver.Value, error) {
 	return string(ns.PostingDirection), nil
 }
 
+type SagaState string
+
+const (
+	SagaStatePending   SagaState = "pending"
+	SagaStateRunning   SagaState = "running"
+	SagaStateCompleted SagaState = "completed"
+	SagaStateFailed    SagaState = "failed"
+)
+
+func (e *SagaState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SagaState(s)
+	case string:
+		*e = SagaState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SagaState: %T", src)
+	}
+	return nil
+}
+
+type NullSagaState struct {
+	SagaState SagaState
+	Valid     bool // Valid is true if SagaState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSagaState) Scan(value interface{}) error {
+	if value == nil {
+		ns.SagaState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SagaState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSagaState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SagaState), nil
+}
+
 type SolanaCommitment string
 
 const (
@@ -244,6 +288,19 @@ type OnchainPayment struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
+type Outbox struct {
+	ID            pgtype.UUID
+	Topic         string
+	AggregateID   pgtype.UUID
+	Payload       []byte
+	Headers       []byte
+	CreatedAt     pgtype.Timestamptz
+	NextAttemptAt pgtype.Timestamptz
+	DeliveredAt   pgtype.Timestamptz
+	Attempts      int32
+	LastError     *string
+}
+
 type PaymentIntent struct {
 	ID                 pgtype.UUID
 	MerchantID         pgtype.UUID
@@ -278,4 +335,19 @@ type Quote struct {
 	ExpiresAt pgtype.Timestamptz
 	Signature []byte
 	CreatedAt pgtype.Timestamptz
+}
+
+type SagaRun struct {
+	ID           pgtype.UUID
+	IntentID     pgtype.UUID
+	SagaKind     string
+	CurrentStep  string
+	State        SagaState
+	StepAttempts int32
+	NextRunAt    pgtype.Timestamptz
+	LeaseOwner   *string
+	LeaseUntil   pgtype.Timestamptz
+	LastError    *string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }
