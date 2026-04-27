@@ -64,9 +64,9 @@ func run(ctx context.Context, cmd string, args []string, cfg config.Config, logg
 	case "watcher":
 		return runWatcher(ctx, cfg, logger)
 	case "orchestrator":
-		return runStub(ctx, "orchestrator", logger)
+		return runOrchestrator(ctx, cfg, logger)
 	case "dispatcher":
-		return runStub(ctx, "dispatcher", logger)
+		return runDispatcher(ctx, cfg, logger)
 	case "recon":
 		return runStub(ctx, "recon", logger)
 	case "version":
