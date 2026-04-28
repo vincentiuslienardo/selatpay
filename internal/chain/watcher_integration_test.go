@@ -25,6 +25,8 @@ import (
 
 	ldb "github.com/vincentiuslienardo/selatpay/internal/db"
 	dbq "github.com/vincentiuslienardo/selatpay/internal/db/sqlc"
+	"github.com/vincentiuslienardo/selatpay/internal/saga"
+	"github.com/vincentiuslienardo/selatpay/internal/saga/steps"
 )
 
 // --- postgres harness (duplicated from ledger_integration_test.go to avoid
@@ -447,6 +449,75 @@ func TestPromoteUnfinalized_PromotesConfirmedToFinalized(t *testing.T) {
 	}
 	if row.Commitment != dbq.SolanaCommitmentFinalized {
 		t.Errorf("commitment: got %s want finalized", row.Commitment)
+	}
+}
+
+func TestProcessSignature_FinalizedLinkedDepositEnqueuesSaga(t *testing.T) {
+	pool, cleanup := startPostgres(t)
+	defer cleanup()
+
+	hotATA := solana.NewWallet().PublicKey()
+	mint := solana.NewWallet().PublicKey()
+	ref := solana.NewWallet().PublicKey()
+
+	merchID := seedMerchant(t, pool, "saga-enqueue")
+	quoteID := seedQuote(t, pool)
+	intentID := seedIntent(t, pool, merchID, quoteID, "saga-enqueue-1", &ref, hotATA.String())
+
+	res, sig := buildTxResult(t, &hotATA, &mint, 750_000, 6, 99, ref)
+	fake := &fakeRPC{tx: map[solana.Signature]*rpc.GetTransactionResult{sig: res}}
+
+	w := NewWatcher(pool, fake, nil, WatcherConfig{
+		HotWalletATA:     hotATA,
+		Mint:             mint,
+		ExpectedDecimals: 6,
+	}, slog.Default())
+	ctx := context.Background()
+
+	if err := w.RefreshReferences(ctx); err != nil {
+		t.Fatalf("refresh references: %v", err)
+	}
+
+	// A confirmed-only finalize should NOT trigger a saga; only finalized does.
+	if err := w.ProcessSignature(ctx, sig, rpc.CommitmentConfirmed); err != nil {
+		t.Fatalf("confirmed process: %v", err)
+	}
+	q := dbq.New(pool)
+	if _, err := q.GetSagaRunByIntent(ctx, dbq.GetSagaRunByIntentParams{
+		IntentID: ldb.PgUUID(intentID),
+		SagaKind: string(saga.KindSettlement),
+	}); err == nil {
+		t.Fatal("saga should not exist after confirmed-only commitment")
+	}
+
+	if err := w.ProcessSignature(ctx, sig, rpc.CommitmentFinalized); err != nil {
+		t.Fatalf("finalized process: %v", err)
+	}
+	run, err := q.GetSagaRunByIntent(ctx, dbq.GetSagaRunByIntentParams{
+		IntentID: ldb.PgUUID(intentID),
+		SagaKind: string(saga.KindSettlement),
+	})
+	if err != nil {
+		t.Fatalf("expected saga after finalize: %v", err)
+	}
+	if run.CurrentStep != steps.FirstStep {
+		t.Errorf("current_step: got %s want %s", run.CurrentStep, steps.FirstStep)
+	}
+	if run.State != dbq.SagaStatePending {
+		t.Errorf("saga state: got %s want pending", run.State)
+	}
+
+	// A second finalized event must not enqueue a duplicate saga.
+	if err := w.ProcessSignature(ctx, sig, rpc.CommitmentFinalized); err != nil {
+		t.Fatalf("finalized replay: %v", err)
+	}
+	var sagaCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM saga_runs WHERE intent_id = $1`, intentID).Scan(&sagaCount); err != nil {
+		t.Fatalf("count saga runs: %v", err)
+	}
+	if sagaCount != 1 {
+		t.Errorf("saga_runs after replay: got %d want 1", sagaCount)
 	}
 }
 
