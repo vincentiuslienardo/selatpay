@@ -55,6 +55,7 @@ type Querier interface {
 	GetOutboxByID(ctx context.Context, id pgtype.UUID) (Outbox, error)
 	GetPaymentIntentByID(ctx context.Context, id pgtype.UUID) (PaymentIntent, error)
 	GetPaymentIntentByMerchantRef(ctx context.Context, arg GetPaymentIntentByMerchantRefParams) (PaymentIntent, error)
+	GetPayoutByIntent(ctx context.Context, intentID pgtype.UUID) (Payout, error)
 	GetQuote(ctx context.Context, id pgtype.UUID) (Quote, error)
 	GetSagaRunByID(ctx context.Context, id pgtype.UUID) (SagaRun, error)
 	GetSagaRunByIntent(ctx context.Context, arg GetSagaRunByIntentParams) (SagaRun, error)
@@ -67,7 +68,11 @@ type Querier interface {
 	ListUndeliveredOutbox(ctx context.Context, limit int32) ([]Outbox, error)
 	ListUnfinalizedOnchainPayments(ctx context.Context, limit int32) ([]OnchainPayment, error)
 	MarkOutboxDelivered(ctx context.Context, id pgtype.UUID) (Outbox, error)
+	MarkPayoutFailed(ctx context.Context, arg MarkPayoutFailedParams) (Payout, error)
+	MarkPayoutSubmitting(ctx context.Context, id pgtype.UUID) (Payout, error)
+	MarkPayoutSucceeded(ctx context.Context, arg MarkPayoutSucceededParams) (Payout, error)
 	PublishOutbox(ctx context.Context, arg PublishOutboxParams) (Outbox, error)
+	ResetPayoutToPending(ctx context.Context, arg ResetPayoutToPendingParams) (Payout, error)
 	ScheduleOutboxRetry(ctx context.Context, arg ScheduleOutboxRetryParams) (Outbox, error)
 	// Step failed but is retryable. Caller computes next_run_at from the attempt
 	// count using exponential backoff with jitter; storing the absolute time
@@ -76,6 +81,11 @@ type Querier interface {
 	UpdatePaymentIntentReference(ctx context.Context, arg UpdatePaymentIntentReferenceParams) (PaymentIntent, error)
 	UpdatePaymentIntentState(ctx context.Context, arg UpdatePaymentIntentStateParams) (PaymentIntent, error)
 	UpsertOnchainPayment(ctx context.Context, arg UpsertOnchainPaymentParams) (OnchainPayment, error)
+	// Creates the payout row on first call, returns the existing row on
+	// replay. The ON CONFLICT branch updates intent_id to itself so
+	// RETURNING * fires consistently — the caller never has to follow up
+	// with a SELECT to learn the persisted state.
+	UpsertPayout(ctx context.Context, arg UpsertPayoutParams) (Payout, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -103,6 +103,50 @@ func (ns NullPaymentIntentState) Value() (driver.Value, error) {
 	return string(ns.PaymentIntentState), nil
 }
 
+type PayoutState string
+
+const (
+	PayoutStatePending    PayoutState = "pending"
+	PayoutStateSubmitting PayoutState = "submitting"
+	PayoutStateSucceeded  PayoutState = "succeeded"
+	PayoutStateFailed     PayoutState = "failed"
+)
+
+func (e *PayoutState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PayoutState(s)
+	case string:
+		*e = PayoutState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PayoutState: %T", src)
+	}
+	return nil
+}
+
+type NullPayoutState struct {
+	PayoutState PayoutState
+	Valid       bool // Valid is true if PayoutState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPayoutState) Scan(value interface{}) error {
+	if value == nil {
+		ns.PayoutState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PayoutState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPayoutState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PayoutState), nil
+}
+
 type PostingDirection string
 
 const (
@@ -314,6 +358,19 @@ type PaymentIntent struct {
 	State              PaymentIntentState
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+}
+
+type Payout struct {
+	ID            pgtype.UUID
+	IntentID      pgtype.UUID
+	Rail          string
+	AmountIdr     int64
+	State         PayoutState
+	RailReference *string
+	LastError     *string
+	Attempts      int32
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 }
 
 type Posting struct {
