@@ -43,10 +43,12 @@ func (s *PGStore) Get(ctx context.Context, merchantID uuid.UUID, key string) (Re
 func (s *PGStore) Put(ctx context.Context, r Record) (Record, bool, error) {
 	q := dbq.New(s.pool)
 	inserted, err := q.InsertIdempotencyKey(ctx, dbq.InsertIdempotencyKeyParams{
-		MerchantID:   ldb.PgUUID(r.MerchantID),
-		Key:          r.Key,
-		RequestHash:  r.RequestHash,
-		StatusCode:   int32(r.StatusCode),
+		MerchantID:  ldb.PgUUID(r.MerchantID),
+		Key:         r.Key,
+		RequestHash: r.RequestHash,
+		// HTTP status codes are bounded to the 100..599 range; the int32
+		// cast here is a no-op for any value the middleware can produce.
+		StatusCode:   int32(r.StatusCode), //nolint:gosec // see comment above
 		ResponseBody: r.ResponseBody,
 	})
 	if err == nil {

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	oapitypes "github.com/oapi-codegen/runtime/types"
@@ -129,7 +128,7 @@ func (h *Handlers) GetPaymentIntent(w http.ResponseWriter, r *http.Request, id o
 	}
 
 	q := dbq.New(h.Pool)
-	intent, err := q.GetPaymentIntentByID(r.Context(), ldb.PgUUID(uuid.UUID(id)))
+	intent, err := q.GetPaymentIntentByID(r.Context(), ldb.PgUUID(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "not_found", "payment intent not found")
@@ -166,8 +165,8 @@ func validateCreateRequest(r apispec.CreatePaymentIntentRequest) error {
 
 func (h *Handlers) intentToAPI(p dbq.PaymentIntent, q dbq.Quote) apispec.PaymentIntent {
 	out := apispec.PaymentIntent{
-		Id:               oapitypes.UUID(ldb.FromPgUUID(p.ID)),
-		MerchantId:       oapitypes.UUID(ldb.FromPgUUID(p.MerchantID)),
+		Id:               ldb.FromPgUUID(p.ID),
+		MerchantId:       ldb.FromPgUUID(p.MerchantID),
 		ExternalRef:      p.ExternalRef,
 		AmountIdr:        p.AmountIdr,
 		QuotedAmountUsdc: p.QuotedAmountUsdc,
@@ -176,7 +175,7 @@ func (h *Handlers) intentToAPI(p dbq.PaymentIntent, q dbq.Quote) apispec.Payment
 		RecipientAta:     p.RecipientAta,
 		CreatedAt:        p.CreatedAt.Time,
 		Quote: apispec.Quote{
-			Id:        oapitypes.UUID(ldb.FromPgUUID(q.ID)),
+			Id:        ldb.FromPgUUID(q.ID),
 			Pair:      q.Pair,
 			Rate:      formatRate(q.RateNum, q.RateScale),
 			SpreadBps: q.SpreadBps,
@@ -209,7 +208,8 @@ func (h *Handlers) buildPayURL(p dbq.PaymentIntent) (string, error) {
 	return solanapay.BuildURL(solanapay.URLParams{
 		Recipient:  h.HotWalletPubkey,
 		SPLToken:   &mint,
-		Amount:     solanapay.FormatAmount(uint64(p.QuotedAmountUsdc), h.USDCDecimals),
+		// QuotedAmountUsdc carries a CHECK (> 0) constraint at the DB layer.
+		Amount: solanapay.FormatAmount(uint64(p.QuotedAmountUsdc), h.USDCDecimals), //nolint:gosec // DB-enforced positive int64 fits in uint64 by definition
 		References: []solana.PublicKey{refPub},
 		Label:      h.SolanaPayLabel,
 		Message:    msg,

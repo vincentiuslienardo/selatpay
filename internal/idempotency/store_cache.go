@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,8 +48,11 @@ func (c *CachedStore) Get(ctx context.Context, merchantID uuid.UUID, key string)
 			}, nil
 		}
 	} else if !errors.Is(err, redis.Nil) {
-		// transient cache error — log-and-continue; don't fail the request
-		// just because Redis hiccupped. The store is truth.
+		// Transient cache error — don't fail the request just because Redis
+		// hiccupped. The store is truth; log and fall through. err comes
+		// from the redis client and slog escapes structured values, so
+		// log-injection isn't a real risk here.
+		slog.Warn("idempotency: redis get failed", "key", ck, "err", err) //nolint:gosec // see comment above
 	}
 
 	rec, err := c.inner.Get(ctx, merchantID, key)
@@ -79,6 +82,9 @@ func (c *CachedStore) warm(ctx context.Context, ck string, r Record) {
 		return
 	}
 	if err := c.rdb.Set(ctx, ck, b, c.ttl).Err(); err != nil {
-		_ = fmt.Errorf("redis set: %w", err) // intentionally swallowed; cache is best-effort
+		// Cache write is best-effort; the durable store is truth. err
+		// is sourced from the redis client and slog escapes structured
+		// values, so log-injection isn't a real risk here.
+		slog.Warn("idempotency: redis set failed", "key", ck, "err", err) //nolint:gosec // see comment above
 	}
 }

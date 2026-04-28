@@ -52,7 +52,7 @@ type Config struct {
 	SolanaPayMessage string
 
 	QuoteTTL       time.Duration
-	QuoteSpreadBps int
+	QuoteSpreadBps int32
 
 	MockBankURL string
 
@@ -87,7 +87,7 @@ func Load() (Config, error) {
 		SolanaPayLabel:        getEnv("SELATPAY_SOLANA_PAY_LABEL", "Selatpay"),
 		SolanaPayMessage:      getEnv("SELATPAY_SOLANA_PAY_MESSAGE", ""),
 		QuoteTTL:              getDuration("SELATPAY_QUOTE_TTL", 60*time.Second),
-		QuoteSpreadBps:        getInt("SELATPAY_QUOTE_SPREAD_BPS", 50),
+		QuoteSpreadBps:        getInt32("SELATPAY_QUOTE_SPREAD_BPS", 50),
 		MockBankURL:           getEnv("SELATPAY_MOCK_BANK_URL", "http://localhost:9100"),
 		HTTPReadTimeout:       getDuration("SELATPAY_HTTP_READ_TIMEOUT", 10*time.Second),
 		HTTPWriteTimeout:      getDuration("SELATPAY_HTTP_WRITE_TIMEOUT", 30*time.Second),
@@ -151,14 +151,18 @@ func getDuration(k string, def time.Duration) time.Duration {
 	return d
 }
 
-func getInt(k string, def int) int {
+// getInt32 reads an env var as a base-10 int32. Falls back to def if the
+// var is unset, unparseable, or out of int32 range — same fail-soft
+// philosophy the rest of the loader uses, since misconfigured tunables
+// shouldn't crash the binary on startup.
+func getInt32(k string, def int32) int32 {
 	v, ok := os.LookupEnv(k)
 	if !ok {
 		return def
 	}
-	n, err := strconv.Atoi(v)
+	n, err := strconv.ParseInt(v, 10, 32)
 	if err != nil {
 		return def
 	}
-	return n
+	return int32(n)
 }

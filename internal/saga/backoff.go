@@ -1,7 +1,7 @@
 package saga
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"time"
 )
 
@@ -12,7 +12,6 @@ import (
 type Backoff struct {
 	Base time.Duration
 	Max  time.Duration
-	rng  *rand.Rand
 }
 
 func NewBackoff(base, max time.Duration) *Backoff {
@@ -25,7 +24,6 @@ func NewBackoff(base, max time.Duration) *Backoff {
 	return &Backoff{
 		Base: base,
 		Max:  max,
-		rng:  rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -35,6 +33,11 @@ func NewBackoff(base, max time.Duration) *Backoff {
 // Jitter on the full window (not just the increment) is deliberate —
 // it gives the strongest decorrelation across worker fleets and is what
 // AWS recommends in their "exponential backoff and jitter" post.
+//
+// Uses math/rand/v2's package-level Int64N: jitter does not need
+// cryptographic randomness, and v2's package functions are
+// goroutine-safe and self-seeding so the Backoff struct doesn't have
+// to carry a *rand.Rand.
 func (b *Backoff) Delay(attempt int32) time.Duration {
 	if attempt < 0 {
 		attempt = 0
@@ -46,10 +49,12 @@ func (b *Backoff) Delay(attempt int32) time.Duration {
 	if candidate > b.Max {
 		candidate = b.Max
 	}
-	// rand.Int63n requires n > 0; guard against the off-chance of a
-	// caller setting Base to zero through reflection or test seams.
+	// Int64N requires n > 0; guard against the off-chance of a caller
+	// setting Base to zero through reflection or test seams.
 	if candidate <= 0 {
 		return 0
 	}
-	return time.Duration(b.rng.Int63n(int64(candidate)))
+	// Jitter is decorrelation, not a security primitive — math/rand/v2 is
+	// the right tool here.
+	return time.Duration(rand.Int64N(int64(candidate))) //nolint:gosec // see comment above
 }

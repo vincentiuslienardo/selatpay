@@ -10,15 +10,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// SagaKind names a saga family. Multiple kinds can coexist on the same
+// Kind names a saga family. Multiple kinds can coexist on the same
 // intent over its lifetime (e.g., a settlement saga and a refund saga),
 // each keyed independently by (intent_id, saga_kind).
-type SagaKind string
+type Kind string
 
 const (
 	// KindSettlement walks an intent from finalized deposit to merchant
 	// payout and webhook notification.
-	KindSettlement SagaKind = "intent_settlement"
+	KindSettlement Kind = "intent_settlement"
 )
 
 // Run is the orchestrator-facing snapshot of a saga_runs row at the

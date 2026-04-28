@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -39,7 +39,6 @@ type Dispatcher struct {
 	sender Sender
 	cfg    DispatcherConfig
 	log    *slog.Logger
-	rng    *rand.Rand
 }
 
 // NewDispatcher wires dependencies and applies defaults. Topic must be
@@ -84,7 +83,6 @@ func NewDispatcher(pool *pgxpool.Pool, sender Sender, cfg DispatcherConfig, log 
 		sender: sender,
 		cfg:    cfg,
 		log:    log,
-		rng:    rand.New(rand.NewSource(time.Now().UnixNano())),
 	}, nil
 }
 
@@ -293,5 +291,7 @@ func (d *Dispatcher) computeBackoff(attempt int32) time.Duration {
 	if candidate <= 0 {
 		return 0
 	}
-	return time.Duration(d.rng.Int63n(int64(candidate)))
+	// Jitter is decorrelation, not a security primitive — math/rand/v2 is
+	// the right tool here.
+	return time.Duration(rand.Int64N(int64(candidate))) //nolint:gosec // see comment above
 }

@@ -96,7 +96,7 @@ func ParseURL(s string) (URLParams, error) {
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return URLParams{}, fmt.Errorf("%w: %v", ErrInvalidURL, err)
+		return URLParams{}, fmt.Errorf("%w: %w", ErrInvalidURL, err)
 	}
 	if u.Scheme != "solana" {
 		return URLParams{}, fmt.Errorf("%w: scheme %q", ErrInvalidURL, u.Scheme)
@@ -106,7 +106,7 @@ func ParseURL(s string) (URLParams, error) {
 	}
 	recipient, err := solana.PublicKeyFromBase58(u.Opaque)
 	if err != nil {
-		return URLParams{}, fmt.Errorf("%w: recipient: %v", ErrInvalidURL, err)
+		return URLParams{}, fmt.Errorf("%w: recipient: %w", ErrInvalidURL, err)
 	}
 	q := u.Query()
 	out := URLParams{
@@ -119,14 +119,14 @@ func ParseURL(s string) (URLParams, error) {
 	if splStr := q.Get("spl-token"); splStr != "" {
 		mint, err := solana.PublicKeyFromBase58(splStr)
 		if err != nil {
-			return URLParams{}, fmt.Errorf("%w: spl-token: %v", ErrInvalidURL, err)
+			return URLParams{}, fmt.Errorf("%w: spl-token: %w", ErrInvalidURL, err)
 		}
 		out.SPLToken = &mint
 	}
 	for _, refStr := range q["reference"] {
 		ref, err := solana.PublicKeyFromBase58(refStr)
 		if err != nil {
-			return URLParams{}, fmt.Errorf("%w: reference: %v", ErrInvalidURL, err)
+			return URLParams{}, fmt.Errorf("%w: reference: %w", ErrInvalidURL, err)
 		}
 		out.References = append(out.References, ref)
 	}

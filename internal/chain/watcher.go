@@ -224,8 +224,11 @@ func (w *Watcher) ProcessSignature(ctx context.Context, sig solana.Signature, co
 
 	q := dbq.New(dbtx)
 	row, err := q.UpsertOnchainPayment(ctx, dbq.UpsertOnchainPaymentParams{
-		Signature:       sig.String(),
-		Slot:            int64(resp.Slot),
+		Signature: sig.String(),
+		// Solana slot numbers are bounded by the cluster's lifetime and
+		// fit in int64 by orders of magnitude. The schema column is
+		// BIGINT to match.
+		Slot:            int64(resp.Slot), //nolint:gosec // see comment above
 		BlockTime:       blockTime,
 		FromAta:         transfer.Source.String(),
 		ToAta:           transfer.Dest.String(),

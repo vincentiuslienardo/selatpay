@@ -149,14 +149,14 @@ func QuoteAmount(amountIDR int64, rate Rate, spreadBps int32) (int64, error) {
 	}
 
 	num := new(big.Int).SetInt64(amountIDR)
-	num.Mul(num, big.NewInt(int64(pow10(int(USDCDecimals)))))
+	num.Mul(num, big.NewInt(pow10(int(USDCDecimals))))
 	num.Mul(num, big.NewInt(10000))
 
 	// effective rate numerator = rate.Num * (10000 - spread_bps)
 	effRate := new(big.Int).SetInt64(rate.Num)
 	effRate.Mul(effRate, big.NewInt(int64(10000-spreadBps)))
 	if rate.Scale > 0 {
-		effRate.Mul(effRate, big.NewInt(int64(pow10(int(rate.Scale)))))
+		effRate.Mul(effRate, big.NewInt(pow10(int(rate.Scale))))
 	}
 
 	if effRate.Sign() == 0 {

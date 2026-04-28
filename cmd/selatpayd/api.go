@@ -54,7 +54,7 @@ func runAPI(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	q := quoter.New(pool, quoter.NewMockProvider(quoter.DefaultMockRates()), cfg.QuoteHMACSecret, quoter.Options{
 		TTL:       cfg.QuoteTTL,
-		SpreadBps: int32(cfg.QuoteSpreadBps),
+		SpreadBps: cfg.QuoteSpreadBps,
 	})
 
 	handler := api.NewRouter(api.Deps{

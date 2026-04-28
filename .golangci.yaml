@@ -1,34 +1,44 @@
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
-    - revive
     - bodyclose
     - errorlint
     - gosec
     - misspell
-    - unconvert
     - nilerr
     - nolintlint
-
-linters-settings:
-  revive:
+    - revive
+    - unconvert
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-return
+        - name: error-naming
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-      - name: var-naming
-      - name: indent-error-flow
-      - name: error-return
-      - name: error-naming
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters: [gosec, errcheck]
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
