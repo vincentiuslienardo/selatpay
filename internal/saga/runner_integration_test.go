@@ -22,9 +22,25 @@ import (
 	ldb "github.com/vincentiuslienardo/selatpay/internal/db"
 	dbq "github.com/vincentiuslienardo/selatpay/internal/db/sqlc"
 	"github.com/vincentiuslienardo/selatpay/internal/ledger"
+	"github.com/vincentiuslienardo/selatpay/internal/payout"
+	"github.com/vincentiuslienardo/selatpay/internal/payout/rails"
 	"github.com/vincentiuslienardo/selatpay/internal/saga"
 	"github.com/vincentiuslienardo/selatpay/internal/saga/steps"
 )
+
+// stubRail satisfies payout.Rail for tests that don't want to stand
+// up the mock bank HTTP server. Returns a fixed Outcome.
+type stubRail struct {
+	name    string
+	outcome payout.Outcome
+	ref     string
+	msg     string
+}
+
+func (s *stubRail) Name() string { return s.name }
+func (s *stubRail) Submit(ctx context.Context, req payout.SubmitRequest) (payout.SubmitResult, error) {
+	return payout.SubmitResult{Outcome: s.outcome, RailReference: s.ref, Message: s.msg}, nil
+}
 
 // --- shared scaffolding ---
 
@@ -132,7 +148,8 @@ func seedFixture(t *testing.T, pool *pgxpool.Pool) sagaFixture {
 
 	var merchantID uuid.UUID
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO merchants (name) VALUES ('saga-merchant') RETURNING id`).Scan(&merchantID); err != nil {
+		`INSERT INTO merchants (name, bank_code, bank_account_number, bank_account_name)
+		 VALUES ('saga-merchant', 'BCA', '1234567890', 'ACME PTE LTD') RETURNING id`).Scan(&merchantID); err != nil {
 		t.Fatalf("seed merchant: %v", err)
 	}
 
@@ -145,9 +162,12 @@ func seedFixture(t *testing.T, pool *pgxpool.Pool) sagaFixture {
 	}
 
 	var intentID uuid.UUID
+	// 1 USDC at mid 15000 IDR/USDC with 50bps spread → merchant gets
+	// 14925 IDR. Match the math the saga will book against so the
+	// per-account balances assert cleanly.
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO payment_intents (merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, recipient_ata, state)
-		 VALUES ($1, 'saga-1', 15000000, 1000000, $2, 'recipient-ata', 'pending') RETURNING id`,
+		 VALUES ($1, 'saga-1', 14925, 1000000, $2, 'recipient-ata', 'pending') RETURNING id`,
 		merchantID, quoteID).Scan(&intentID); err != nil {
 		t.Fatalf("seed intent: %v", err)
 	}
@@ -186,7 +206,12 @@ func enqueueSaga(t *testing.T, pool *pgxpool.Pool, intentID uuid.UUID) {
 
 func newRunner(t *testing.T, pool *pgxpool.Pool) *saga.Runner {
 	t.Helper()
-	deps := steps.Deps{Ledger: ledger.New(pool), Log: slog.New(slog.NewTextHandler(os.Stderr, nil))}
+	rail := &stubRail{name: rails.MockIDRBankName, outcome: payout.OutcomeSuccess, ref: "MIDR-test"}
+	deps := steps.Deps{
+		Ledger:      ledger.New(pool),
+		PayoutRails: payout.NewRouter(rail),
+		Log:         slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
 	registry := saga.NewRegistry(steps.All(deps)...)
 	r, err := saga.NewRunner(pool, registry, saga.Config{
 		Owner:        "test-runner",
@@ -255,19 +280,37 @@ func TestSagaRunner_HappyPathWalksToCompleted(t *testing.T) {
 		t.Errorf("deposit_credit journal entry count: got %d want 1", jeCount)
 	}
 
-	var postingCount int
-	var postingSum int64
-	if err := pool.QueryRow(ctx,
-		`SELECT COUNT(*), COALESCE(SUM(CASE direction WHEN 'debit' THEN amount ELSE -amount END), 0)
+	// Three journal entries land in a happy path: deposit_credit (USDC),
+	// fx_swap_usdc (USDC), payout_disbursed (IDR). Each must be
+	// internally balanced in its own currency, so the per-currency
+	// debit-credit sum must be zero independently.
+	rows, err := pool.Query(ctx,
+		`SELECT p.currency, SUM(CASE p.direction WHEN 'debit' THEN p.amount ELSE -p.amount END)
 		 FROM postings p JOIN journal_entries j ON p.journal_entry_id = j.id
-		 WHERE j.intent_id = $1`, fx.intentID).Scan(&postingCount, &postingSum); err != nil {
-		t.Fatalf("postings sum: %v", err)
+		 WHERE j.intent_id = $1
+		 GROUP BY p.currency`, fx.intentID)
+	if err != nil {
+		t.Fatalf("postings sums: %v", err)
 	}
-	if postingCount != 2 {
-		t.Errorf("posting count: got %d want 2", postingCount)
+	defer rows.Close()
+	for rows.Next() {
+		var currency string
+		var sum int64
+		if err := rows.Scan(&currency, &sum); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if sum != 0 {
+			t.Errorf("postings unbalanced for %s: %d (debit-credit)", currency, sum)
+		}
 	}
-	if postingSum != 0 {
-		t.Errorf("postings unbalanced: %d (debit-credit)", postingSum)
+
+	var jeKinds int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT kind) FROM journal_entries WHERE intent_id = $1`, fx.intentID).Scan(&jeKinds); err != nil {
+		t.Fatalf("count kinds: %v", err)
+	}
+	if jeKinds != 3 {
+		t.Errorf("expected 3 journal entry kinds (deposit_credit, fx_swap_usdc, payout_disbursed), got %d", jeKinds)
 	}
 
 	// Outbox row exists for intent.completed.
@@ -377,7 +420,12 @@ func TestSagaRunner_ConcurrentClaimsAreExclusive(t *testing.T) {
 	fx := seedFixture(t, pool)
 	enqueueSaga(t, pool, fx.intentID)
 
-	deps := steps.Deps{Ledger: ledger.New(pool), Log: slog.Default()}
+	rail := &stubRail{name: rails.MockIDRBankName, outcome: payout.OutcomeSuccess, ref: "MIDR-test"}
+	deps := steps.Deps{
+		Ledger:      ledger.New(pool),
+		PayoutRails: payout.NewRouter(rail),
+		Log:         slog.Default(),
+	}
 	registry := saga.NewRegistry(steps.All(deps)...)
 	r1, _ := saga.NewRunner(pool, registry, saga.Config{Owner: "r1"}, slog.Default())
 	r2, _ := saga.NewRunner(pool, registry, saga.Config{Owner: "r2"}, slog.Default())
