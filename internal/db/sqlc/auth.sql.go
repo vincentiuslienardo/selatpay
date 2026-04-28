@@ -38,13 +38,20 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 }
 
 const createMerchant = `-- name: CreateMerchant :one
-INSERT INTO merchants (name) VALUES ($1) RETURNING id, name, created_at
+INSERT INTO merchants (name) VALUES ($1) RETURNING id, name, created_at, bank_code, bank_account_number, bank_account_name
 `
 
 func (q *Queries) CreateMerchant(ctx context.Context, name string) (Merchant, error) {
 	row := q.db.QueryRow(ctx, createMerchant, name)
 	var i Merchant
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.BankCode,
+		&i.BankAccountNumber,
+		&i.BankAccountName,
+	)
 	return i, err
 }
 
@@ -78,6 +85,24 @@ func (q *Queries) GetActiveAPIKeyByKeyID(ctx context.Context, keyID string) (Get
 		&i.CreatedAt,
 		&i.RevokedAt,
 		&i.MerchantName,
+	)
+	return i, err
+}
+
+const getMerchantByID = `-- name: GetMerchantByID :one
+SELECT id, name, created_at, bank_code, bank_account_number, bank_account_name FROM merchants WHERE id = $1
+`
+
+func (q *Queries) GetMerchantByID(ctx context.Context, id pgtype.UUID) (Merchant, error) {
+	row := q.db.QueryRow(ctx, getMerchantByID, id)
+	var i Merchant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.BankCode,
+		&i.BankAccountNumber,
+		&i.BankAccountName,
 	)
 	return i, err
 }

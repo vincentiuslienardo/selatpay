@@ -312,9 +312,12 @@ type JournalEntry struct {
 }
 
 type Merchant struct {
-	ID        pgtype.UUID
-	Name      string
-	CreatedAt pgtype.Timestamptz
+	ID                pgtype.UUID
+	Name              string
+	CreatedAt         pgtype.Timestamptz
+	BankCode          *string
+	BankAccountNumber *string
+	BankAccountName   *string
 }
 
 type OnchainPayment struct {

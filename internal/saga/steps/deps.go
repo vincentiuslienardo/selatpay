@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/vincentiuslienardo/selatpay/internal/ledger"
+	"github.com/vincentiuslienardo/selatpay/internal/payout"
 )
 
 // Deps is the bag of collaborators that every step needs. Keeping this
@@ -11,6 +12,7 @@ import (
 // steps cheaply and lets tests inject a partial set without breaking
 // the unrelated step factories.
 type Deps struct {
-	Ledger *ledger.Ledger
-	Log    *slog.Logger
+	Ledger      *ledger.Ledger
+	PayoutRails *payout.Router
+	Log         *slog.Logger
 }
