@@ -7,13 +7,14 @@ import (
 	"github.com/vincentiuslienardo/selatpay/internal/config"
 	ldb "github.com/vincentiuslienardo/selatpay/internal/db"
 	"github.com/vincentiuslienardo/selatpay/internal/outbox"
+	"github.com/vincentiuslienardo/selatpay/internal/webhook"
 )
 
 // runDispatcher boots an outbox dispatcher for the intent.completed
-// topic. The actual webhook delivery — HMAC signing, retry policy
-// against arbitrary merchant URLs — lands in Phase 7. For Phase 5 the
-// Sender is a logging stub so the saga's outbox publish path can be
-// exercised end-to-end against a running orchestrator.
+// topic backed by the HMAC-signed webhook Sender. Per-merchant URL
+// and signing secret come from the merchants table; an unconfigured
+// merchant becomes a silent no-op so a single bad row can't stall
+// the queue.
 func runDispatcher(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	pool, err := ldb.OpenPool(ctx, cfg.DBURL)
 	if err != nil {
@@ -21,15 +22,10 @@ func runDispatcher(ctx context.Context, cfg config.Config, logger *slog.Logger) 
 	}
 	defer pool.Close()
 
-	sender := outbox.SenderFunc(func(ctx context.Context, msg outbox.Message) error {
-		logger.Info("outbox message ready for delivery (stub)",
-			"id", msg.ID,
-			"topic", msg.Topic,
-			"aggregate_id", msg.AggregateID,
-			"attempts", msg.Attempts,
-		)
-		return nil
-	})
+	sender, err := webhook.NewSender(pool, webhook.Config{Log: logger})
+	if err != nil {
+		return err
+	}
 
 	d, err := outbox.NewDispatcher(pool, sender, outbox.DispatcherConfig{
 		Topic: "intent.completed",
