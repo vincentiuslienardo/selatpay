@@ -14,6 +14,11 @@ type Querier interface {
 	// Positive balance is expressed in the account's "natural" direction:
 	// debit-normal for asset/expense, credit-normal for liability/equity/revenue.
 	AccountBalance(ctx context.Context, id pgtype.UUID) (AccountBalanceRow, error)
+	// Variant of AccountBalance keyed on (code, currency) so callers
+	// without the account UUID at hand (e.g., recon) don't need a
+	// separate lookup. Returns the same balance shape AccountBalance
+	// does.
+	AccountBalanceByCode(ctx context.Context, arg AccountBalanceByCodeParams) (AccountBalanceByCodeRow, error)
 	// Step succeeded and the saga has more work to do. Resets attempts and
 	// releases the lease so the next worker can pick it up immediately.
 	AdvanceSagaStep(ctx context.Context, arg AdvanceSagaStepParams) (SagaRun, error)

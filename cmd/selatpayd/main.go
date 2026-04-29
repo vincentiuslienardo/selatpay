@@ -68,7 +68,7 @@ func run(ctx context.Context, cmd string, args []string, cfg config.Config, logg
 	case "dispatcher":
 		return runDispatcher(ctx, cfg, logger)
 	case "recon":
-		return runStub(ctx, "recon", logger)
+		return runRecon(ctx, cfg, logger)
 	case "version":
 		fmt.Println("selatpayd dev")
 		return nil
@@ -76,13 +76,6 @@ func run(ctx context.Context, cmd string, args []string, cfg config.Config, logg
 		usage()
 		return fmt.Errorf("unknown subcommand %q", cmd)
 	}
-}
-
-// runStub keeps the binary buildable while subcommands are implemented in later phases.
-func runStub(ctx context.Context, name string, logger *slog.Logger) error {
-	logger.Info("subcommand stub running; awaiting implementation", "subcommand", name)
-	<-ctx.Done()
-	return ctx.Err()
 }
 
 func usage() {

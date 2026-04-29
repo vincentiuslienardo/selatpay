@@ -54,6 +54,56 @@ func (q *Queries) AccountBalance(ctx context.Context, id pgtype.UUID) (AccountBa
 	return i, err
 }
 
+const accountBalanceByCode = `-- name: AccountBalanceByCode :one
+SELECT
+    a.id,
+    a.code,
+    a.type,
+    a.currency,
+    COALESCE(SUM(
+        CASE
+            WHEN a.type IN ('asset', 'expense') AND p.direction = 'debit'  THEN  p.amount
+            WHEN a.type IN ('asset', 'expense') AND p.direction = 'credit' THEN -p.amount
+            WHEN a.type IN ('liability', 'equity', 'revenue') AND p.direction = 'credit' THEN  p.amount
+            WHEN a.type IN ('liability', 'equity', 'revenue') AND p.direction = 'debit'  THEN -p.amount
+        END
+    ), 0)::BIGINT AS balance
+FROM accounts a
+LEFT JOIN postings p ON p.account_id = a.id
+WHERE a.code = $1 AND a.currency = $2
+GROUP BY a.id
+`
+
+type AccountBalanceByCodeParams struct {
+	Code     string
+	Currency string
+}
+
+type AccountBalanceByCodeRow struct {
+	ID       pgtype.UUID
+	Code     string
+	Type     AccountType
+	Currency string
+	Balance  int64
+}
+
+// Variant of AccountBalance keyed on (code, currency) so callers
+// without the account UUID at hand (e.g., recon) don't need a
+// separate lookup. Returns the same balance shape AccountBalance
+// does.
+func (q *Queries) AccountBalanceByCode(ctx context.Context, arg AccountBalanceByCodeParams) (AccountBalanceByCodeRow, error) {
+	row := q.db.QueryRow(ctx, accountBalanceByCode, arg.Code, arg.Currency)
+	var i AccountBalanceByCodeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Type,
+		&i.Currency,
+		&i.Balance,
+	)
+	return i, err
+}
+
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (code, type, currency)
 VALUES ($1, $2, $3)

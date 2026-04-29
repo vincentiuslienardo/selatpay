@@ -28,6 +28,29 @@ RETURNING *;
 -- name: ListPostingsByEntry :many
 SELECT * FROM postings WHERE journal_entry_id = $1 ORDER BY created_at, id;
 
+-- name: AccountBalanceByCode :one
+-- Variant of AccountBalance keyed on (code, currency) so callers
+-- without the account UUID at hand (e.g., recon) don't need a
+-- separate lookup. Returns the same balance shape AccountBalance
+-- does.
+SELECT
+    a.id,
+    a.code,
+    a.type,
+    a.currency,
+    COALESCE(SUM(
+        CASE
+            WHEN a.type IN ('asset', 'expense') AND p.direction = 'debit'  THEN  p.amount
+            WHEN a.type IN ('asset', 'expense') AND p.direction = 'credit' THEN -p.amount
+            WHEN a.type IN ('liability', 'equity', 'revenue') AND p.direction = 'credit' THEN  p.amount
+            WHEN a.type IN ('liability', 'equity', 'revenue') AND p.direction = 'debit'  THEN -p.amount
+        END
+    ), 0)::BIGINT AS balance
+FROM accounts a
+LEFT JOIN postings p ON p.account_id = a.id
+WHERE a.code = $1 AND a.currency = $2
+GROUP BY a.id;
+
 -- name: AccountBalance :one
 -- Positive balance is expressed in the account's "natural" direction:
 -- debit-normal for asset/expense, credit-normal for liability/equity/revenue.
