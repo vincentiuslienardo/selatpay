@@ -38,7 +38,7 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 }
 
 const createMerchant = `-- name: CreateMerchant :one
-INSERT INTO merchants (name) VALUES ($1) RETURNING id, name, created_at, bank_code, bank_account_number, bank_account_name
+INSERT INTO merchants (name) VALUES ($1) RETURNING id, name, created_at, bank_code, bank_account_number, bank_account_name, webhook_url, webhook_secret
 `
 
 func (q *Queries) CreateMerchant(ctx context.Context, name string) (Merchant, error) {
@@ -51,6 +51,8 @@ func (q *Queries) CreateMerchant(ctx context.Context, name string) (Merchant, er
 		&i.BankCode,
 		&i.BankAccountNumber,
 		&i.BankAccountName,
+		&i.WebhookUrl,
+		&i.WebhookSecret,
 	)
 	return i, err
 }
@@ -90,7 +92,7 @@ func (q *Queries) GetActiveAPIKeyByKeyID(ctx context.Context, keyID string) (Get
 }
 
 const getMerchantByID = `-- name: GetMerchantByID :one
-SELECT id, name, created_at, bank_code, bank_account_number, bank_account_name FROM merchants WHERE id = $1
+SELECT id, name, created_at, bank_code, bank_account_number, bank_account_name, webhook_url, webhook_secret FROM merchants WHERE id = $1
 `
 
 func (q *Queries) GetMerchantByID(ctx context.Context, id pgtype.UUID) (Merchant, error) {
@@ -103,6 +105,27 @@ func (q *Queries) GetMerchantByID(ctx context.Context, id pgtype.UUID) (Merchant
 		&i.BankCode,
 		&i.BankAccountNumber,
 		&i.BankAccountName,
+		&i.WebhookUrl,
+		&i.WebhookSecret,
 	)
+	return i, err
+}
+
+const getMerchantWebhookConfig = `-- name: GetMerchantWebhookConfig :one
+SELECT id, webhook_url, webhook_secret
+FROM merchants
+WHERE id = $1
+`
+
+type GetMerchantWebhookConfigRow struct {
+	ID            pgtype.UUID
+	WebhookUrl    *string
+	WebhookSecret []byte
+}
+
+func (q *Queries) GetMerchantWebhookConfig(ctx context.Context, id pgtype.UUID) (GetMerchantWebhookConfigRow, error) {
+	row := q.db.QueryRow(ctx, getMerchantWebhookConfig, id)
+	var i GetMerchantWebhookConfigRow
+	err := row.Scan(&i.ID, &i.WebhookUrl, &i.WebhookSecret)
 	return i, err
 }

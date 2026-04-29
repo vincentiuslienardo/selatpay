@@ -52,6 +52,7 @@ type Querier interface {
 	GetIdempotencyKey(ctx context.Context, arg GetIdempotencyKeyParams) (IdempotencyKey, error)
 	GetJournalEntryByExternalRef(ctx context.Context, externalRef string) (JournalEntry, error)
 	GetMerchantByID(ctx context.Context, id pgtype.UUID) (Merchant, error)
+	GetMerchantWebhookConfig(ctx context.Context, id pgtype.UUID) (GetMerchantWebhookConfigRow, error)
 	GetOnchainPaymentBySignature(ctx context.Context, signature string) (OnchainPayment, error)
 	GetOutboxByID(ctx context.Context, id pgtype.UUID) (Outbox, error)
 	GetPaymentIntentByID(ctx context.Context, id pgtype.UUID) (PaymentIntent, error)

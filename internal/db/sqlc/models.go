@@ -318,6 +318,8 @@ type Merchant struct {
 	BankCode          *string
 	BankAccountNumber *string
 	BankAccountName   *string
+	WebhookUrl        *string
+	WebhookSecret     []byte
 }
 
 type OnchainPayment struct {

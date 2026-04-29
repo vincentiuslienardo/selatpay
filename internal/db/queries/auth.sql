@@ -12,6 +12,11 @@ INSERT INTO merchants (name) VALUES ($1) RETURNING *;
 -- name: GetMerchantByID :one
 SELECT * FROM merchants WHERE id = $1;
 
+-- name: GetMerchantWebhookConfig :one
+SELECT id, webhook_url, webhook_secret
+FROM merchants
+WHERE id = $1;
+
 -- name: CreateAPIKey :one
 INSERT INTO api_keys (merchant_id, key_id, secret_hash)
 VALUES ($1, $2, $3)
