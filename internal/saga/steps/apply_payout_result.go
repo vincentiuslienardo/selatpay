@@ -97,12 +97,18 @@ func (s *ApplyPayoutResult) Execute(ctx context.Context, tx pgx.Tx, run saga.Run
 }
 
 // postFXSwapUSDC books the USDC-side leg of the cross-currency swap.
-// External_ref keys the entry so a replay returns the existing entry
-// instead of double-debiting the liability.
+// The credit lands on equity_fx_settlement_usdc, not on
+// asset_hot_wallet_usdc, because the USDC physically stays in the hot
+// wallet during settlement (the FX swap is a treasury-side concept,
+// not an on-chain transfer). Crediting the hot wallet here would
+// zero the ledger's view of custody after every settlement and break
+// recon against the on-chain balance. External_ref keys the entry so
+// a replay returns the existing entry instead of double-debiting the
+// liability.
 func (s *ApplyPayoutResult) postFXSwapUSDC(ctx context.Context, tx pgx.Tx, intentID uuid.UUID, amountUSDC int64, po dbq.Payout) error {
-	hotWallet, err := s.deps.Ledger.GetAccountByCodeTx(ctx, tx, ledger.AccountHotWalletUSDC, ledger.CurrencyUSDC)
+	settlement, err := s.deps.Ledger.GetAccountByCodeTx(ctx, tx, ledger.AccountEquityFXSettlement, ledger.CurrencyUSDC)
 	if err != nil {
-		return saga.Terminal(fmt.Errorf("apply_payout_result: hot wallet account: %w", err))
+		return saga.Terminal(fmt.Errorf("apply_payout_result: equity_fx_settlement account: %w", err))
 	}
 	userFunds, err := s.deps.Ledger.GetAccountByCodeTx(ctx, tx, ledger.AccountLiabilityUserFunds, ledger.CurrencyUSDC)
 	if err != nil {
@@ -117,7 +123,7 @@ func (s *ApplyPayoutResult) postFXSwapUSDC(ctx context.Context, tx pgx.Tx, inten
 		IntentID:    &id,
 		Lines: []ledger.Line{
 			{AccountID: userFunds.ID, Amount: amountUSDC, Currency: ledger.CurrencyUSDC, Direction: ledger.Debit},
-			{AccountID: hotWallet.ID, Amount: amountUSDC, Currency: ledger.CurrencyUSDC, Direction: ledger.Credit},
+			{AccountID: settlement.ID, Amount: amountUSDC, Currency: ledger.CurrencyUSDC, Direction: ledger.Credit},
 		},
 	}
 	if _, err := s.deps.Ledger.PostTx(ctx, tx, entry); err != nil {
