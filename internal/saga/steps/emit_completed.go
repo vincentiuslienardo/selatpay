@@ -81,6 +81,10 @@ func (s *EmitCompleted) Execute(ctx context.Context, tx pgx.Tx, run saga.Run) (s
 	headers := map[string]string{
 		"X-Selatpay-Topic":           "intent.completed",
 		"X-Selatpay-Idempotency-Key": fmt.Sprintf("intent.completed:%s", intentID),
+		// X-Selatpay-Merchant is consumed by webhook.Sender to look
+		// up the destination URL and signing secret. The header is
+		// internal-only and stripped before the outbound POST.
+		"X-Selatpay-Merchant": merchantID.String(),
 	}
 	if _, err := outbox.Publish(ctx, tx, "intent.completed", &intentID, payload, headers); err != nil {
 		return saga.StepResult{}, fmt.Errorf("emit_completed: publish outbox: %w", err)
