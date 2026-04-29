@@ -70,6 +70,12 @@ type Querier interface {
 	InsertPosting(ctx context.Context, arg InsertPostingParams) (Posting, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
 	ListActiveReferenceIntents(ctx context.Context) ([]ListActiveReferenceIntentsRow, error)
+	ListJournalEntriesByIntent(ctx context.Context, intentID pgtype.UUID) ([]JournalEntry, error)
+	ListOnchainPaymentsByIntent(ctx context.Context, intentID pgtype.UUID) ([]OnchainPayment, error)
+	ListOutboxByAggregate(ctx context.Context, aggregateID pgtype.UUID) ([]Outbox, error)
+	// Recent intents for the dashboard's index. Caller controls limit so
+	// the page can paginate without changing the query.
+	ListPaymentIntentsRecent(ctx context.Context, limit int32) ([]PaymentIntent, error)
 	ListPostingsByEntry(ctx context.Context, journalEntryID pgtype.UUID) ([]Posting, error)
 	ListSagaRunsByState(ctx context.Context, arg ListSagaRunsByStateParams) ([]SagaRun, error)
 	ListUndeliveredOutbox(ctx context.Context, limit int32) ([]Outbox, error)

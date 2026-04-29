@@ -41,3 +41,8 @@ SELECT * FROM outbox
 WHERE delivered_at IS NULL
 ORDER BY created_at
 LIMIT $1;
+
+-- name: ListOutboxByAggregate :many
+SELECT * FROM outbox
+WHERE aggregate_id = $1
+ORDER BY created_at;

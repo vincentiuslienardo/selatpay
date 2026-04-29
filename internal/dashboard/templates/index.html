@@ -1,0 +1,31 @@
+{{template "layout" .}}
+{{define "content"}}
+<h1>Recent Payment Intents</h1>
+<p class="muted">Showing the {{.Limit}} most recent intents.</p>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>External Ref</th>
+      <th>Amount IDR</th>
+      <th>USDC</th>
+      <th>State</th>
+      <th>Created</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Intents}}
+    <tr>
+      <td class="mono"><a href="/intents/{{.ID.Bytes | printf "%x"}}">{{shortUUID (printf "%x" .ID.Bytes)}}&hellip;</a></td>
+      <td>{{.ExternalRef}}</td>
+      <td>{{.AmountIdr}}</td>
+      <td>{{.QuotedAmountUsdc}}</td>
+      <td><span class="state state-{{.State}}">{{.State}}</span></td>
+      <td>{{fmtTime .CreatedAt.Time}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" class="muted">no intents yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

@@ -148,6 +148,47 @@ func (q *Queries) ListActiveReferenceIntents(ctx context.Context) ([]ListActiveR
 	return items, nil
 }
 
+const listPaymentIntentsRecent = `-- name: ListPaymentIntentsRecent :many
+SELECT id, merchant_id, external_ref, amount_idr, quoted_amount_usdc, quote_id, reference_pubkey, reference_secret_enc, recipient_ata, state, created_at, updated_at FROM payment_intents
+ORDER BY created_at DESC
+LIMIT $1
+`
+
+// Recent intents for the dashboard's index. Caller controls limit so
+// the page can paginate without changing the query.
+func (q *Queries) ListPaymentIntentsRecent(ctx context.Context, limit int32) ([]PaymentIntent, error) {
+	rows, err := q.db.Query(ctx, listPaymentIntentsRecent, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentIntent{}
+	for rows.Next() {
+		var i PaymentIntent
+		if err := rows.Scan(
+			&i.ID,
+			&i.MerchantID,
+			&i.ExternalRef,
+			&i.AmountIdr,
+			&i.QuotedAmountUsdc,
+			&i.QuoteID,
+			&i.ReferencePubkey,
+			&i.ReferenceSecretEnc,
+			&i.RecipientAta,
+			&i.State,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePaymentIntentReference = `-- name: UpdatePaymentIntentReference :one
 UPDATE payment_intents
 SET reference_pubkey = $2,

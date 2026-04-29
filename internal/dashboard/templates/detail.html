@@ -1,0 +1,117 @@
+{{template "layout" .}}
+{{define "content"}}
+<h1>{{.Title}}</h1>
+
+<div class="summary">
+  <div><span class="label">State</span><span class="state state-{{.Intent.State}}">{{.Intent.State}}</span></div>
+  <div><span class="label">External Ref</span>{{.Intent.ExternalRef}}</div>
+  <div><span class="label">Amount IDR</span>{{.Intent.AmountIdr}}</div>
+  <div><span class="label">Quoted USDC</span>{{.Intent.QuotedAmountUsdc}}</div>
+  <div><span class="label">Merchant</span>{{.Merchant.Name}}</div>
+  <div><span class="label">Created</span>{{fmtTime .Intent.CreatedAt.Time}}</div>
+</div>
+
+<h2>Quote</h2>
+<table>
+  <tr><th>Pair</th><td>{{.Quote.Pair}}</td>
+      <th>Rate</th><td>{{.Quote.RateNum}} / 10^{{.Quote.RateScale}}</td>
+      <th>Spread bps</th><td>{{.Quote.SpreadBps}}</td>
+      <th>Expires</th><td>{{fmtTime .Quote.ExpiresAt.Time}}</td>
+  </tr>
+</table>
+
+<h2>On-chain Payments</h2>
+<table>
+  <thead>
+    <tr><th>Signature</th><th>Slot</th><th>Amount</th><th>Commitment</th><th>Block Time</th></tr>
+  </thead>
+  <tbody>
+    {{range .Onchain}}
+    <tr>
+      <td class="mono">{{shortUUID .Signature}}&hellip;</td>
+      <td>{{.Slot}}</td>
+      <td>{{.Amount}}</td>
+      <td>{{.Commitment}}</td>
+      <td>{{if .BlockTime.Valid}}{{fmtTime .BlockTime.Time}}{{else}}<span class="muted">unconfirmed</span>{{end}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">no on-chain payments yet</td></tr>
+    {{end}}
+  </tbody>
+</table>
+
+<h2>Journal Entries</h2>
+{{range .Entries}}
+<h3 class="mono">{{.Entry.Kind}} <span class="muted">({{shortUUID (printf "%x" .Entry.ID.Bytes)}}&hellip;)</span></h3>
+{{if .Entry.Description}}<p class="muted">{{deref .Entry.Description}}</p>{{end}}
+<table>
+  <thead>
+    <tr><th>Account</th><th>Direction</th><th>Amount</th><th>Currency</th></tr>
+  </thead>
+  <tbody>
+    {{range .Postings}}
+    <tr>
+      <td class="mono">{{.AccountCode}}</td>
+      <td>{{.Posting.Direction}}</td>
+      <td>{{.Posting.Amount}}</td>
+      <td>{{.Posting.Currency}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{else}}
+<p class="muted">no journal entries posted yet</p>
+{{end}}
+
+<h2>Payout</h2>
+{{with .Payout}}
+<table>
+  <tr><th>State</th><td><span class="state state-{{.State}}">{{.State}}</span></td>
+      <th>Rail</th><td>{{.Rail}}</td>
+      <th>Amount IDR</th><td>{{.AmountIdr}}</td>
+      <th>Attempts</th><td>{{.Attempts}}</td>
+  </tr>
+  <tr><th>Reference</th><td colspan="3">{{deref .RailReference}}</td>
+      <th>Last Error</th><td>{{deref .LastError}}</td>
+  </tr>
+</table>
+{{else}}
+<p class="muted">no payout row yet</p>
+{{end}}
+
+<h2>Saga</h2>
+{{with .Saga}}
+<table>
+  <tr><th>State</th><td><span class="state state-{{.State}}">{{.State}}</span></td>
+      <th>Current Step</th><td class="mono">{{.CurrentStep}}</td>
+      <th>Attempts</th><td>{{.StepAttempts}}</td>
+      <th>Lease</th><td>{{deref .LeaseOwner}}</td>
+  </tr>
+  {{if .LastError}}
+  <tr><th>Last Error</th><td colspan="7">{{deref .LastError}}</td></tr>
+  {{end}}
+</table>
+{{else}}
+<p class="muted">no saga run for this intent</p>
+{{end}}
+
+<h2>Outbox Events</h2>
+<table>
+  <thead>
+    <tr><th>ID</th><th>Topic</th><th>Attempts</th><th>Delivered</th><th>Created</th></tr>
+  </thead>
+  <tbody>
+    {{range .Outbox}}
+    <tr>
+      <td class="mono">{{shortUUID (printf "%x" .ID.Bytes)}}&hellip;</td>
+      <td>{{.Topic}}</td>
+      <td>{{.Attempts}}</td>
+      <td>{{if .DeliveredAt.Valid}}{{fmtTime .DeliveredAt.Time}}{{else}}<span class="muted">pending</span>{{end}}</td>
+      <td>{{fmtTime .CreatedAt.Time}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">no outbox messages</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

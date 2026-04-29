@@ -29,3 +29,8 @@ SELECT * FROM onchain_payments
 WHERE intent_id = $1 AND commitment = 'finalized'
 ORDER BY created_at
 LIMIT 1;
+
+-- name: ListOnchainPaymentsByIntent :many
+SELECT * FROM onchain_payments
+WHERE intent_id = $1
+ORDER BY created_at;

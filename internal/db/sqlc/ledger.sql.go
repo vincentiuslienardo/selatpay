@@ -283,6 +283,37 @@ func (q *Queries) ListAccounts(ctx context.Context) ([]Account, error) {
 	return items, nil
 }
 
+const listJournalEntriesByIntent = `-- name: ListJournalEntriesByIntent :many
+SELECT id, external_ref, kind, description, intent_id, created_at FROM journal_entries WHERE intent_id = $1 ORDER BY created_at
+`
+
+func (q *Queries) ListJournalEntriesByIntent(ctx context.Context, intentID pgtype.UUID) ([]JournalEntry, error) {
+	rows, err := q.db.Query(ctx, listJournalEntriesByIntent, intentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []JournalEntry{}
+	for rows.Next() {
+		var i JournalEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExternalRef,
+			&i.Kind,
+			&i.Description,
+			&i.IntentID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPostingsByEntry = `-- name: ListPostingsByEntry :many
 SELECT id, journal_entry_id, account_id, amount, currency, direction, created_at FROM postings WHERE journal_entry_id = $1 ORDER BY created_at, id
 `

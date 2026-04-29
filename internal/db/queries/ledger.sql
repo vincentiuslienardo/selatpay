@@ -28,6 +28,9 @@ RETURNING *;
 -- name: ListPostingsByEntry :many
 SELECT * FROM postings WHERE journal_entry_id = $1 ORDER BY created_at, id;
 
+-- name: ListJournalEntriesByIntent :many
+SELECT * FROM journal_entries WHERE intent_id = $1 ORDER BY created_at;
+
 -- name: AccountBalanceByCode :one
 -- Variant of AccountBalance keyed on (code, currency) so callers
 -- without the account UUID at hand (e.g., recon) don't need a

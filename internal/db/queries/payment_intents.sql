@@ -34,3 +34,10 @@ FROM payment_intents
 WHERE state IN ('pending', 'funded')
   AND reference_pubkey IS NOT NULL
 ORDER BY created_at;
+
+-- name: ListPaymentIntentsRecent :many
+-- Recent intents for the dashboard's index. Caller controls limit so
+-- the page can paginate without changing the query.
+SELECT * FROM payment_intents
+ORDER BY created_at DESC
+LIMIT $1;

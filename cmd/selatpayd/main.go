@@ -69,6 +69,8 @@ func run(ctx context.Context, cmd string, args []string, cfg config.Config, logg
 		return runDispatcher(ctx, cfg, logger)
 	case "recon":
 		return runRecon(ctx, cfg, logger)
+	case "dashboard":
+		return runDashboard(ctx, cfg, logger)
 	case "version":
 		fmt.Println("selatpayd dev")
 		return nil
@@ -86,6 +88,7 @@ subcommands:
   watcher       Solana Pay reference watcher
   orchestrator  saga state machine
   dispatcher    webhook outbox dispatcher
+  dashboard     read-only htmx operations dashboard
   recon         on-chain vs ledger reconciliation
   version       print build info`)
 }

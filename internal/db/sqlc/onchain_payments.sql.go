@@ -73,6 +73,45 @@ func (q *Queries) GetOnchainPaymentBySignature(ctx context.Context, signature st
 	return i, err
 }
 
+const listOnchainPaymentsByIntent = `-- name: ListOnchainPaymentsByIntent :many
+SELECT signature, slot, block_time, from_ata, to_ata, mint, amount, reference_pubkey, commitment, intent_id, created_at, updated_at FROM onchain_payments
+WHERE intent_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListOnchainPaymentsByIntent(ctx context.Context, intentID pgtype.UUID) ([]OnchainPayment, error) {
+	rows, err := q.db.Query(ctx, listOnchainPaymentsByIntent, intentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OnchainPayment{}
+	for rows.Next() {
+		var i OnchainPayment
+		if err := rows.Scan(
+			&i.Signature,
+			&i.Slot,
+			&i.BlockTime,
+			&i.FromAta,
+			&i.ToAta,
+			&i.Mint,
+			&i.Amount,
+			&i.ReferencePubkey,
+			&i.Commitment,
+			&i.IntentID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUnfinalizedOnchainPayments = `-- name: ListUnfinalizedOnchainPayments :many
 SELECT signature, slot, block_time, from_ata, to_ata, mint, amount, reference_pubkey, commitment, intent_id, created_at, updated_at FROM onchain_payments
 WHERE commitment <> 'finalized'

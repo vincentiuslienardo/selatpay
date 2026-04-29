@@ -85,6 +85,43 @@ func (q *Queries) GetOutboxByID(ctx context.Context, id pgtype.UUID) (Outbox, er
 	return i, err
 }
 
+const listOutboxByAggregate = `-- name: ListOutboxByAggregate :many
+SELECT id, topic, aggregate_id, payload, headers, created_at, next_attempt_at, delivered_at, attempts, last_error FROM outbox
+WHERE aggregate_id = $1
+ORDER BY created_at
+`
+
+func (q *Queries) ListOutboxByAggregate(ctx context.Context, aggregateID pgtype.UUID) ([]Outbox, error) {
+	rows, err := q.db.Query(ctx, listOutboxByAggregate, aggregateID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Outbox{}
+	for rows.Next() {
+		var i Outbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.AggregateID,
+			&i.Payload,
+			&i.Headers,
+			&i.CreatedAt,
+			&i.NextAttemptAt,
+			&i.DeliveredAt,
+			&i.Attempts,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUndeliveredOutbox = `-- name: ListUndeliveredOutbox :many
 SELECT id, topic, aggregate_id, payload, headers, created_at, next_attempt_at, delivered_at, attempts, last_error FROM outbox
 WHERE delivered_at IS NULL
