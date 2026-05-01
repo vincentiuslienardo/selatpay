@@ -68,7 +68,7 @@ demo: build ## end-to-end happy-path against local devnet/test-validator
 	./scripts/demo.sh
 
 recon: build ## one-shot reconciliation report
-	$(BIN) recon --once
+	$(BIN) recon
 
 clean:
 	rm -rf $(BIN_DIR) coverage.out coverage.html
