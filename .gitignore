@@ -15,3 +15,7 @@ coverage.html
 
 deploy/data/
 *.log
+
+scripts/keys/
+claude-session.jsonl
+codex-session.jsonl
