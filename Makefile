@@ -1,4 +1,4 @@
-.PHONY: help build test integration lint tidy fmt vet run-api run-watcher run-orchestrator run-dispatcher run-recon up down logs migrate sqlc oapi demo recon clean
+.PHONY: help build test integration lint tidy fmt vet run-api run-watcher run-orchestrator run-dispatcher run-dashboard run-recon up down logs migrate sqlc oapi demo recon clean
 
 BIN_DIR := bin
 BIN     := $(BIN_DIR)/selatpayd
@@ -62,6 +62,7 @@ run-api:           build ; $(BIN) api
 run-watcher:       build ; $(BIN) watcher
 run-orchestrator:  build ; $(BIN) orchestrator
 run-dispatcher:    build ; $(BIN) dispatcher
+run-dashboard:     build ; $(BIN) dashboard
 run-recon:         build ; $(BIN) recon
 
 demo: build ## end-to-end happy-path against local devnet/test-validator
